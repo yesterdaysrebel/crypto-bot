@@ -188,7 +188,10 @@ Create a custom policy file `deploy-policy.json` with minimal required permissio
         "iam:PassRole",
         "logs:CreateLogGroup",
         "logs:CreateLogStream",
-        "logs:PutLogEvents"
+        "logs:PutLogEvents",
+        "logs:DescribeLogGroups",
+        "logs:TagLogGroup",
+        "logs:PutRetentionPolicy"
       ],
       "Resource": "*"
     },

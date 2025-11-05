@@ -66,7 +66,10 @@ This is a simplified, visual guide for setting up OIDC using the AWS Console.
              "iam:PassRole",
              "logs:CreateLogGroup",
              "logs:CreateLogStream",
-             "logs:PutLogEvents"
+             "logs:PutLogEvents",
+             "logs:DescribeLogGroups",
+             "logs:TagLogGroup",
+             "logs:PutRetentionPolicy"
            ],
            "Resource": "*"
          }
