@@ -1,0 +1,289 @@
+name: Deploy to AWS
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:  # Manual trigger
+    inputs:
+      deploy_environment:
+        description: 'Deploy environment'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - staging
+
+env:
+  AWS_REGION: ap-south-1
+  TF_VERSION: 1.5.0
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov
+
+      - name: Run tests
+        run: |
+          pytest tests/ -v --cov=. --cov-report=xml --cov-report=html
+
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./coverage.xml
+          flags: unittests
+          name: codecov-umbrella
+        continue-on-error: true
+
+  lint:
+    name: Lint Code
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+
+      - name: Install linting tools
+        run: |
+          pip install flake8 black isort
+
+      - name: Run flake8
+        run: |
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+        continue-on-error: true
+
+      - name: Check formatting with black
+        run: |
+          black --check .
+        continue-on-error: true
+
+  deploy:
+    name: Deploy to AWS
+    needs: [test, lint]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Terraform Format Check
+        working-directory: ./infra/terraform
+        run: terraform fmt -check
+
+      - name: Terraform Init
+        working-directory: ./infra/terraform
+        run: terraform init
+
+      - name: Terraform Validate
+        working-directory: ./infra/terraform
+        run: terraform validate
+
+      - name: Create terraform.tfvars
+        working-directory: ./infra/terraform
+        run: |
+          cat > terraform.tfvars <<EOF
+          aws_region = "${{ env.AWS_REGION }}"
+          instance_type = "${{ secrets.AWS_INSTANCE_TYPE || 't3.micro' }}"
+          use_spot_instance = true
+          spot_price = ""
+          ssh_key_name = "${{ secrets.AWS_SSH_KEY_NAME }}"
+          EOF
+
+      - name: Terraform Plan
+        working-directory: ./infra/terraform
+        run: terraform plan -out=tfplan
+
+      - name: Terraform Apply
+        working-directory: ./infra/terraform
+        if: github.event_name == 'push' || github.event.inputs.deploy_environment == 'production'
+        run: terraform apply -auto-approve tfplan
+
+      - name: Get Instance Info
+        working-directory: ./infra/terraform
+        id: instance-info
+        run: |
+          echo "instance_id=$(terraform output -raw instance_id)" >> $GITHUB_OUTPUT
+          echo "instance_ip=$(terraform output -raw instance_public_ip)" >> $GITHUB_OUTPUT
+          echo "instance_dns=$(terraform output -raw instance_public_dns)" >> $GITHUB_OUTPUT
+
+      - name: Wait for Instance to be Ready
+        run: |
+          echo "Waiting for instance to be ready..."
+          sleep 60  # Wait for instance to initialize
+          until ssh -o StrictHostKeyChecking=no -i ${{ secrets.AWS_SSH_PRIVATE_KEY }} ec2-user@${{ steps.instance-info.outputs.instance_ip }} 'echo "Instance ready"'; do
+            echo "Waiting for SSH..."
+            sleep 10
+          done
+
+      - name: Deploy Application Code
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.AWS_SSH_PRIVATE_KEY }}
+          INSTANCE_IP: ${{ steps.instance-info.outputs.instance_ip }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          
+          # Create deployment tarball
+          tar --exclude='.git' \
+              --exclude='__pycache__' \
+              --exclude='*.pyc' \
+              --exclude='data' \
+              --exclude='models' \
+              --exclude='trade_logs' \
+              --exclude='backtest_reports' \
+              --exclude='htmlcov' \
+              --exclude='.pytest_cache' \
+              --exclude='.coverage' \
+              -czf trading-bot.tar.gz .
+          
+          # Copy to instance
+          scp -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key trading-bot.tar.gz ec2-user@$INSTANCE_IP:/tmp/
+          
+          # Extract and set up on instance
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key ec2-user@$INSTANCE_IP << 'EOF'
+            cd /opt/trading-bot
+            sudo tar -xzf /tmp/trading-bot.tar.gz -C /opt/trading-bot/
+            sudo chown -R ec2-user:ec2-user /opt/trading-bot
+            
+            # Create virtual environment if it doesn't exist
+            if [ ! -d "venv" ]; then
+              python3.9 -m venv venv
+            fi
+            
+            source venv/bin/activate
+            pip install -r requirements.txt
+            
+            # Create .env file from secrets
+            cat > .env <<ENVEOF
+          DELTA_API_KEY=${{ secrets.DELTA_API_KEY }}
+          DELTA_API_SECRET=${{ secrets.DELTA_API_SECRET }}
+          DELTA_BASE_URL=https://api.delta.exchange
+          DELTA_TESTNET=false
+          TRADING_PRODUCTS=${{ secrets.TRADING_PRODUCTS || 'BTCUSD,ETHUSD' }}
+          MAX_POSITION_SIZE=${{ secrets.MAX_POSITION_SIZE || '1000.0' }}
+          MAX_LEVERAGE=${{ secrets.MAX_LEVERAGE || '10' }}
+          RISK_PER_TRADE=${{ secrets.RISK_PER_TRADE || '0.02' }}
+          DEFAULT_TIMEFRAME=${{ secrets.DEFAULT_TIMEFRAME || '1h' }}
+          ML_MODEL_PATH=models
+          ML_RETRAIN_INTERVAL_HOURS=24
+          ML_FEATURE_WINDOW=100
+          ML_PREDICTION_THRESHOLD=0.6
+          DATA_DIR=data
+          LOG_LEVEL=INFO
+          ENVEOF
+            
+            # Restart service
+            sudo systemctl daemon-reload
+            sudo systemctl restart trading-bot
+            sudo systemctl status trading-bot
+          EOF
+
+      - name: Verify Deployment
+        run: |
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key ec2-user@${{ steps.instance-info.outputs.instance_ip }} << 'EOF'
+            sudo systemctl status trading-bot
+            sleep 5
+            sudo journalctl -u trading-bot -n 20 --no-pager
+          EOF
+
+      - name: Deployment Summary
+        run: |
+          echo "## 🚀 Deployment Complete!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Instance ID:** ${{ steps.instance-info.outputs.instance_id }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Public IP:** ${{ steps.instance-info.outputs.instance_ip }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Public DNS:** ${{ steps.instance-info.outputs.instance_dns }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### SSH Connection" >> $GITHUB_STEP_SUMMARY
+          echo '```bash' >> $GITHUB_STEP_SUMMARY
+          echo "ssh -i ~/.ssh/your-key.pem ec2-user@${{ steps.instance-info.outputs.instance_ip }}" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### View Logs" >> $GITHUB_STEP_SUMMARY
+          echo '```bash' >> $GITHUB_STEP_SUMMARY
+          echo "ssh -i ~/.ssh/your-key.pem ec2-user@${{ steps.instance-info.outputs.instance_ip }}" >> $GITHUB_STEP_SUMMARY
+          echo "sudo journalctl -u trading-bot -f" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+  deploy-staging:
+    name: Deploy to Staging
+    needs: [test]
+    runs-on: ubuntu-latest
+    if: github.event.inputs.deploy_environment == 'staging'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Init
+        working-directory: ./infra/terraform
+        run: terraform init
+
+      - name: Create terraform.tfvars for staging
+        working-directory: ./infra/terraform
+        run: |
+          cat > terraform.tfvars <<EOF
+          aws_region = "${{ env.AWS_REGION }}"
+          instance_type = "t3.micro"
+          use_spot_instance = true
+          spot_price = ""
+          ssh_key_name = "${{ secrets.AWS_SSH_KEY_NAME }}"
+          EOF
+
+      - name: Terraform Plan (Staging)
+        working-directory: ./infra/terraform
+        run: terraform plan -out=tfplan
+
+      - name: Terraform Apply (Staging)
+        working-directory: ./infra/terraform
+        run: terraform apply -auto-approve tfplan
+

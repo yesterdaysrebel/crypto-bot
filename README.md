@@ -115,13 +115,7 @@ The bot will:
 
 ## AWS Deployment
 
-### Prerequisites
-
-- AWS CLI configured
-- Terraform installed (>= 1.0)
-- SSH key pair in AWS
-
-### Deploy to AWS
+### Quick Start
 
 ```bash
 cd infra
@@ -129,16 +123,9 @@ chmod +x deploy.sh
 ./deploy.sh
 ```
 
-Or manually:
+### Detailed Guide
 
-```bash
-cd infra/terraform
-cp terraform.tfvars.example terraform.tfvars
-# Edit terraform.tfvars
-terraform init
-terraform plan
-terraform apply
-```
+See [DEPLOYMENT.md](DEPLOYMENT.md) for complete step-by-step deployment instructions.
 
 ### Cost Optimization
 
@@ -150,7 +137,13 @@ The deployment is optimized for minimal costs:
 
 **Estimated Monthly Cost**: ~$3-6/month
 
-See [infra/README.md](infra/README.md) for detailed deployment instructions.
+### Prerequisites
+
+- AWS CLI configured
+- Terraform installed (>= 1.0)
+- SSH key pair in AWS
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed deployment instructions.
 
 ## Trading Strategies
 

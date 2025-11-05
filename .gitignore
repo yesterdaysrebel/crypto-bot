@@ -75,5 +75,9 @@ backtest_reports/
 # Coverage
 .coverage*
 htmlcov/
+
+# GitHub Actions
+.github/workflows/*.tfvars
+.github/workflows/*.pem
 coverage.xml
 
