@@ -570,13 +570,3 @@ resource "aws_cloudwatch_metric_alarm" "memory_utilization" {
     Project = var.project_name
   }
 }
-
-# Outputs
-output "instance_id" {
-  value = var.use_spot_instance ? aws_spot_instance_request.trading_bot[0].spot_instance_id : aws_instance.trading_bot[0].id
-}
-
-output "instance_public_ip" {
-  value = var.use_spot_instance ? aws_spot_instance_request.trading_bot[0].public_ip : aws_instance.trading_bot[0].public_ip
-}
-

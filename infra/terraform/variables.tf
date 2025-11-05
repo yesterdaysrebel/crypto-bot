@@ -106,4 +106,3 @@ variable "project_name" {
   type        = string
   default     = "trading-bot"
 }
-
