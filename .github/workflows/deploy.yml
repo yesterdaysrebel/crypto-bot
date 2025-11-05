@@ -93,12 +93,37 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Debug OIDC Setup
+        run: |
+          echo "Checking OIDC configuration..."
+          echo "Role ARN secret exists: ${{ secrets.AWS_ROLE_ARN != '' }}"
+          if [ -z "${{ secrets.AWS_ROLE_ARN }}" ]; then
+            echo "❌ ERROR: AWS_ROLE_ARN secret is not set!"
+            echo "Please add AWS_ROLE_ARN to GitHub Secrets:"
+            echo "1. Go to Settings → Secrets and variables → Actions"
+            echo "2. Click 'New repository secret'"
+            echo "3. Name: AWS_ROLE_ARN"
+            echo "4. Value: Your IAM Role ARN (e.g., arn:aws:iam::123456789012:role/GitHubActions-DeployRole)"
+            exit 1
+          fi
+          echo "✅ Role ARN is set"
+          echo "Repository: ${{ github.repository }}"
+          echo "GitHub Actor: ${{ github.actor }}"
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
-          role-session-name: GitHubActions-Deploy
+          role-session-name: GitHubActions-Deploy-${{ github.run_id }}
+          audience: sts.amazonaws.com
+          output-credentials: true
+
+      - name: Verify AWS credentials
+        run: |
+          echo "Verifying AWS credentials..."
+          aws sts get-caller-identity
+          echo "✅ AWS credentials verified"
 
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v3
@@ -260,12 +285,27 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Debug OIDC Setup
+        run: |
+          echo "Checking OIDC configuration..."
+          if [ -z "${{ secrets.AWS_ROLE_ARN }}" ]; then
+            echo "❌ ERROR: AWS_ROLE_ARN secret is not set!"
+            exit 1
+          fi
+          echo "✅ Role ARN is set"
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
-          role-session-name: GitHubActions-Staging
+          role-session-name: GitHubActions-Staging-${{ github.run_id }}
+          audience: sts.amazonaws.com
+          output-credentials: true
+
+      - name: Verify AWS credentials
+        run: |
+          aws sts get-caller-identity
 
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v3

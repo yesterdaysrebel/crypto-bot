@@ -110,6 +110,21 @@ To trigger deployment manually:
 
 ## Troubleshooting
 
+### Error: "Credentials could not be loaded"
+
+This usually means:
+1. **`AWS_ROLE_ARN` secret is not set** - Add it in GitHub Secrets
+2. **OIDC provider not created** - Follow [setup-oidc.md](setup-oidc.md)
+3. **IAM role trust policy mismatch** - Check repository name matches exactly
+4. **Missing permissions** - Verify workflow has `id-token: write`
+
+**Quick Fix:**
+- Check if `AWS_ROLE_ARN` exists in GitHub Secrets
+- Verify OIDC provider exists in AWS IAM
+- Check IAM role trust policy matches your repository name
+
+See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for detailed troubleshooting guide.
+
 ### Deployment Fails
 
 1. **Check AWS OIDC setup:**
@@ -117,7 +132,8 @@ To trigger deployment manually:
    - Check OIDC provider is configured in AWS IAM
    - Verify trust policy allows your repository
    - Check IAM role has necessary permissions
-   - See [setup-oidc.md](setup-oidc.md) for troubleshooting
+   - See [setup-oidc.md](setup-oidc.md) for setup instructions
+   - See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for common errors
 
 2. **Check SSH key:**
    - Verify `AWS_SSH_KEY_NAME` matches your AWS key pair
