@@ -31,9 +31,13 @@ Automatically deploys to AWS when:
 
 Set these secrets in your GitHub repository settings:
 
-### AWS Credentials
-- `AWS_ACCESS_KEY_ID` - AWS access key
-- `AWS_SECRET_ACCESS_KEY` - AWS secret key
+### AWS Authentication (OIDC - Recommended)
+
+**⚠️ IMPORTANT**: We use OIDC (OpenID Connect) instead of access keys for security. See [setup-oidc.md](setup-oidc.md) for setup instructions.
+
+- `AWS_ROLE_ARN` - AWS IAM Role ARN for GitHub Actions (e.g., `arn:aws:iam::123456789012:role/GitHubActions-DeployRole`)
+
+### AWS Configuration
 - `AWS_SSH_KEY_NAME` - AWS EC2 key pair name
 - `AWS_SSH_PRIVATE_KEY` - Private key content (for SSH access)
 - `AWS_INSTANCE_TYPE` - (Optional) EC2 instance type (default: t3.micro)
@@ -50,6 +54,18 @@ Set these secrets in your GitHub repository settings:
 - `DEFAULT_TIMEFRAME` - Default timeframe (default: 1h)
 
 ## Setting Up Secrets
+
+### Step 1: Set Up OIDC Authentication (Required)
+
+**⚠️ IMPORTANT**: Follow the detailed guide in [setup-oidc.md](setup-oidc.md) to set up OIDC authentication with AWS. This is the secure, recommended method.
+
+Quick summary:
+1. Create OIDC provider in AWS IAM
+2. Create IAM role with trust policy for GitHub Actions
+3. Attach necessary permissions to the role
+4. Add the role ARN to GitHub secrets as `AWS_ROLE_ARN`
+
+### Step 2: Add Other Secrets
 
 1. Go to your GitHub repository
 2. Navigate to **Settings** → **Secrets and variables** → **Actions**
@@ -96,9 +112,12 @@ To trigger deployment manually:
 
 ### Deployment Fails
 
-1. **Check AWS credentials:**
-   - Verify secrets are set correctly
-   - Check IAM permissions
+1. **Check AWS OIDC setup:**
+   - Verify `AWS_ROLE_ARN` secret is set correctly
+   - Check OIDC provider is configured in AWS IAM
+   - Verify trust policy allows your repository
+   - Check IAM role has necessary permissions
+   - See [setup-oidc.md](setup-oidc.md) for troubleshooting
 
 2. **Check SSH key:**
    - Verify `AWS_SSH_KEY_NAME` matches your AWS key pair
@@ -126,21 +145,25 @@ To trigger deployment manually:
 
 ## Security Best Practices
 
-1. **Never commit secrets:**
+1. **Use OIDC (Already Configured):**
+   - ✅ No long-lived access keys stored
+   - ✅ Short-lived tokens automatically
+   - ✅ Scoped to specific repositories/workflows
+   - ✅ Follows AWS security best practices
+
+2. **Never commit secrets:**
    - Use GitHub Secrets for all sensitive data
    - Use `.env` files locally (already in .gitignore)
 
-2. **Use least privilege:**
-   - Create IAM user with minimal permissions
+3. **Use least privilege:**
+   - IAM role with minimal required permissions
    - Use separate IAM roles for different environments
-
-3. **Rotate credentials:**
-   - Regularly rotate AWS access keys
-   - Update GitHub secrets when rotating
+   - Restrict OIDC trust policy to specific repositories/branches
 
 4. **Review deployments:**
    - Use manual approval for production
    - Review Terraform plans before applying
+   - Monitor CloudTrail logs for AssumeRoleWithWebIdentity calls
 
 ## Customization
 

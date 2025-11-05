@@ -85,6 +85,10 @@ jobs:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch'
     
+    permissions:
+      id-token: write  # Required for OIDC
+      contents: read   # Required for checkout
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -92,9 +96,9 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
+          role-session-name: GitHubActions-Deploy
 
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v3
@@ -248,6 +252,10 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event.inputs.deploy_environment == 'staging'
     
+    permissions:
+      id-token: write  # Required for OIDC
+      contents: read   # Required for checkout
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -255,9 +263,9 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
+          role-session-name: GitHubActions-Staging
 
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v3

@@ -10,13 +10,17 @@ See [`.github/workflows/README.md`](.github/workflows/README.md) for complete se
 
 ### Quick Setup for GitHub Actions
 
-1. **Set up GitHub Secrets** (Settings → Secrets and variables → Actions):
-   - `AWS_ACCESS_KEY_ID`
-   - `AWS_SECRET_ACCESS_KEY`
-   - `AWS_SSH_KEY_NAME`
-   - `AWS_SSH_PRIVATE_KEY`
-   - `DELTA_API_KEY`
-   - `DELTA_API_SECRET`
+1. **Set up OIDC Authentication with AWS** (See [`.github/workflows/setup-oidc.md`](.github/workflows/setup-oidc.md)):
+   - Create OIDC provider in AWS IAM
+   - Create IAM role for GitHub Actions
+   - Add `AWS_ROLE_ARN` to GitHub Secrets
+
+2. **Set up GitHub Secrets** (Settings → Secrets and variables → Actions):
+   - `AWS_ROLE_ARN` - IAM Role ARN (from OIDC setup)
+   - `AWS_SSH_KEY_NAME` - AWS EC2 key pair name
+   - `AWS_SSH_PRIVATE_KEY` - Private key content (for SSH access)
+   - `DELTA_API_KEY` - Delta Exchange API key
+   - `DELTA_API_SECRET` - Delta Exchange API secret
 
 2. **Push to main branch** - Deployment happens automatically!
 
@@ -24,6 +28,7 @@ See [`.github/workflows/README.md`](.github/workflows/README.md) for complete se
 
 ### Benefits of GitHub Actions
 
+- ✅ **Secure OIDC authentication** - No long-lived AWS credentials
 - ✅ Automated testing before deployment
 - ✅ Automatic deployment on push to main
 - ✅ Manual deployment option
