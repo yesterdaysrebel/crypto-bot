@@ -392,10 +392,10 @@ resource "aws_instance" "trading_bot" {
   instance_type = var.instance_type
 
   # Network configuration
-  vpc_security_group_ids = [aws_security_group.trading_bot.id]
-  subnet_id              = var.create_vpc ? aws_subnet.public[0].id : data.aws_subnet.selected[0].id
+  vpc_security_group_ids      = [aws_security_group.trading_bot.id]
+  subnet_id                   = var.create_vpc ? aws_subnet.public[0].id : data.aws_subnet.selected[0].id
   associate_public_ip_address = var.enable_public_ip
-  iam_instance_profile   = aws_iam_instance_profile.ec2_profile.name
+  iam_instance_profile        = aws_iam_instance_profile.ec2_profile.name
 
   # SSH key (required)
   key_name = var.ssh_key_name
@@ -405,9 +405,9 @@ resource "aws_instance" "trading_bot" {
 
   # EBS root volume configuration
   root_block_device {
-    volume_type = var.ebs_volume_type
-    volume_size = var.ebs_volume_size
-    encrypted   = var.ebs_encrypted
+    volume_type           = var.ebs_volume_type
+    volume_size           = var.ebs_volume_size
+    encrypted             = var.ebs_encrypted
     delete_on_termination = true  # Don't keep volume after termination
 
     tags = {
@@ -425,8 +425,8 @@ resource "aws_instance" "trading_bot" {
 
   # Metadata options (security best practices)
   metadata_options {
-    http_endpoint = "enabled"
-    http_tokens   = "required"  # Require IMDSv2 for security
+    http_endpoint               = "enabled"
+    http_tokens                 = "required"  # Require IMDSv2 for security
     http_put_response_hop_limit = 1
   }
 
@@ -445,15 +445,15 @@ resource "aws_spot_instance_request" "trading_bot" {
 
   ami           = data.aws_ami.amazon_linux.id
   instance_type = var.instance_type
-  spot_price    = var.spot_price != "" ? var.spot_price : null
-  spot_type     = "one-time"
+  spot_price           = var.spot_price != "" ? var.spot_price : null
+  spot_type            = "one-time"
   wait_for_fulfillment = true
 
   # Network configuration
-  vpc_security_group_ids = [aws_security_group.trading_bot.id]
-  subnet_id              = var.create_vpc ? aws_subnet.public[0].id : data.aws_subnet.selected[0].id
+  vpc_security_group_ids      = [aws_security_group.trading_bot.id]
+  subnet_id                   = var.create_vpc ? aws_subnet.public[0].id : data.aws_subnet.selected[0].id
   associate_public_ip_address = var.enable_public_ip
-  iam_instance_profile   = aws_iam_instance_profile.ec2_profile.name
+  iam_instance_profile        = aws_iam_instance_profile.ec2_profile.name
 
   # SSH key (required)
   key_name = var.ssh_key_name
@@ -471,8 +471,8 @@ resource "aws_spot_instance_request" "trading_bot" {
 
   # Metadata options (security best practices)
   metadata_options {
-    http_endpoint = "enabled"
-    http_tokens   = "required"  # Require IMDSv2 for security
+    http_endpoint               = "enabled"
+    http_tokens                 = "required"  # Require IMDSv2 for security
     http_put_response_hop_limit = 1
   }
 
@@ -509,8 +509,8 @@ resource "aws_cloudwatch_metric_alarm" "instance_status" {
   statistic           = "Maximum"
   threshold           = "0"
   alarm_description   = "This metric monitors EC2 instance status check failures"
-  treat_missing_data = "notBreaching"
-  
+  treat_missing_data  = "notBreaching"
+
   dimensions = {
     InstanceId = var.use_spot_instance ? aws_spot_instance_request.trading_bot[0].spot_instance_id : aws_instance.trading_bot[0].id
   }
@@ -533,7 +533,7 @@ resource "aws_cloudwatch_metric_alarm" "cpu_utilization" {
   statistic           = "Average"
   threshold           = "80"
   alarm_description   = "This metric monitors EC2 CPU utilization"
-  treat_missing_data = "notBreaching"
+  treat_missing_data  = "notBreaching"
 
   dimensions = {
     InstanceId = var.use_spot_instance ? aws_spot_instance_request.trading_bot[0].spot_instance_id : aws_instance.trading_bot[0].id

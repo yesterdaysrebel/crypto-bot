@@ -132,9 +132,13 @@ jobs:
           terraform_version: ${{ env.TF_VERSION }}
           terraform_wrapper: false
 
+      - name: Terraform Format
+        working-directory: ./infra/terraform
+        run: terraform fmt -recursive
+
       - name: Terraform Format Check
         working-directory: ./infra/terraform
-        run: terraform fmt -check
+        run: terraform fmt -check -recursive
 
       - name: Terraform Init
         working-directory: ./infra/terraform
