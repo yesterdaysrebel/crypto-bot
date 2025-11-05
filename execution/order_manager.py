@@ -39,13 +39,14 @@ class OrderManager:
         self.order_history = []
         self.trade_logger = trade_logger
     
-    def place_order_from_signal(self, signal: Signal, product_id: int) -> Optional[Dict]:
+    def place_order_from_signal(self, signal: Signal, product_id: int, position_manager=None) -> Optional[Dict]:
         """
         Place an order based on a trading signal.
         
         Args:
             signal: Trading signal
             product_id: Product ID
+            position_manager: Optional PositionManager to check for existing positions
             
         Returns:
             Order response or None if failed
@@ -53,6 +54,31 @@ class OrderManager:
         try:
             if signal.action == 'hold' or signal.size == 0:
                 return None
+            
+            # Check for existing active orders for this symbol
+            active_orders = self.get_active_orders(product_id)
+            if active_orders:
+                # Filter orders for this symbol (if we can determine from product_id)
+                # For now, check if there are any active orders
+                existing_orders = [o for o in active_orders if o.get('product_id') == product_id]
+                if existing_orders:
+                    logger.warning(f"Active orders already exist for product {product_id}, skipping new order")
+                    return None
+            
+            # Check for existing position if position_manager is provided
+            if position_manager:
+                existing_position = position_manager.get_position(signal.symbol)
+                if existing_position:
+                    # Check if we're trying to open a position in the same direction
+                    position_side = existing_position.get('side', '')
+                    if signal.action == position_side:
+                        logger.warning(f"Position already exists for {signal.symbol} ({position_side}), skipping {signal.action} order to prevent duplicate positions")
+                        return None
+                    # If opposite side, we need to close the existing position first
+                    # This prevents opening opposite positions simultaneously
+                    if signal.action != position_side:
+                        logger.info(f"Position exists for {signal.symbol} ({position_side}), new signal is {signal.action} - must close existing position first")
+                        return None
             
             # Determine order type and parameters
             order_type = "limit_order" if signal.price else "market_order"
@@ -190,4 +216,20 @@ class OrderManager:
                 cancelled += 1
         
         return cancelled
+    
+    def has_active_order_for_symbol(self, symbol: str, product_id: Optional[int] = None) -> bool:
+        """
+        Check if there are active orders for a symbol.
+        
+        Args:
+            symbol: Product symbol
+            product_id: Optional product ID
+            
+        Returns:
+            True if active orders exist
+        """
+        active_orders = self.get_active_orders(product_id)
+        # Check if any orders match the symbol (we'd need product info for exact match)
+        # For now, return True if there are any active orders for the product_id
+        return len(active_orders) > 0
 

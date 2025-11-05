@@ -78,6 +78,32 @@ class PositionManager:
         self.update_positions()
         return self.positions.get(symbol)
     
+    def has_position(self, symbol: str) -> bool:
+        """
+        Check if a position exists for a symbol.
+        
+        Args:
+            symbol: Product symbol
+            
+        Returns:
+            True if position exists
+        """
+        self.update_positions()
+        return symbol in self.positions
+    
+    def has_position_for_product(self, product_id: int) -> bool:
+        """
+        Check if a position exists for a product ID.
+        
+        Args:
+            product_id: Product ID
+            
+        Returns:
+            True if position exists
+        """
+        self.update_positions()
+        return any(pos.get('product_id') == product_id for pos in self.positions.values())
+    
     def get_all_positions(self) -> Dict[str, Dict]:
         """Get all positions."""
         self.update_positions()

@@ -296,10 +296,21 @@ class TradingBot:
                     # Check if we already have a position
                     existing_position = self.position_manager.get_position(symbol)
                     if not existing_position:
-                        # Place new order
-                        order = self.order_manager.place_order_from_signal(signal, product_id)
-                        if order:
-                            logger.info(f"Strategy {strategy.name} generated {signal.action} signal for {symbol}")
+                        # Check if there are active orders for this symbol
+                        active_orders = self.order_manager.get_active_orders(product_id)
+                        if active_orders:
+                            logger.info(f"Active orders already exist for {symbol}, skipping new order")
+                        else:
+                            # Place new order (order manager will also check for positions and orders)
+                            order = self.order_manager.place_order_from_signal(
+                                signal, 
+                                product_id,
+                                position_manager=self.position_manager
+                            )
+                            if order:
+                                logger.info(f"Strategy {strategy.name} generated {signal.action} signal for {symbol}")
+                    else:
+                        logger.debug(f"Position already exists for {symbol}, skipping order placement")
         
         except Exception as e:
             logger.error(f"Error running strategy {strategy.name} for {symbol}: {e}")
