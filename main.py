@@ -344,8 +344,11 @@ class TradingBot:
         
         self.running = True
         cycle_interval = 60  # Run every 60 seconds
+        last_retrain_time = time.time()
+        retrain_interval_seconds = self.config.ml.retrain_interval_hours * 3600
         
         logger.info("Trading bot started")
+        logger.info(f"Model retrain interval: {self.config.ml.retrain_interval_hours} hours")
         
         while self.running:
             try:
@@ -353,6 +356,15 @@ class TradingBot:
                 
                 # Run trading cycle
                 self.run_cycle()
+                
+                # Check if it's time to retrain models
+                current_time = time.time()
+                time_since_last_retrain = current_time - last_retrain_time
+                if time_since_last_retrain >= retrain_interval_seconds:
+                    logger.info(f"Retrain interval reached ({self.config.ml.retrain_interval_hours} hours), retraining models...")
+                    self.train_ml_models()
+                    last_retrain_time = current_time
+                    logger.info(f"Next retrain scheduled in {self.config.ml.retrain_interval_hours} hours")
                 
                 # Log status
                 total_pnl = self.position_manager.get_total_pnl()
