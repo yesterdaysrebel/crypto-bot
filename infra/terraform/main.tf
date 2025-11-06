@@ -16,7 +16,24 @@ provider "aws" {
 }
 
 # Data sources
-data "aws_ami" "amazon_linux" {
+# Use Amazon Linux 2023 which includes Python 3.9+ by default
+# Fallback to Amazon Linux 2 if AL2023 is not available
+data "aws_ami" "amazon_linux_2023" {
+  most_recent = true
+  owners      = ["amazon"]
+
+  filter {
+    name   = "name"
+    values = ["al2023-ami-*-x86_64"]
+  }
+
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
+}
+
+data "aws_ami" "amazon_linux_2" {
   most_recent = true
   owners      = ["amazon"]
 
@@ -29,6 +46,11 @@ data "aws_ami" "amazon_linux" {
     name   = "virtualization-type"
     values = ["hvm"]
   }
+}
+
+# Use AL2023 if available, otherwise fallback to AL2
+locals {
+  ami_id = try(data.aws_ami.amazon_linux_2023.id, data.aws_ami.amazon_linux_2.id)
 }
 
 # Data source for availability zones
@@ -279,7 +301,7 @@ resource "aws_eip_association" "trading_bot" {
 resource "aws_instance" "trading_bot" {
   count = var.use_spot_instance ? 0 : 1
 
-  ami           = data.aws_ami.amazon_linux.id
+  ami           = local.ami_id
   instance_type = var.instance_type
 
   # Network configuration
@@ -334,7 +356,7 @@ resource "aws_instance" "trading_bot" {
 resource "aws_spot_instance_request" "trading_bot" {
   count = var.use_spot_instance ? 1 : 0
 
-  ami           = data.aws_ami.amazon_linux.id
+  ami           = local.ami_id
   instance_type = var.instance_type
   spot_price           = var.spot_price != "" ? var.spot_price : null
   spot_type            = "one-time"

@@ -1,22 +1,40 @@
 #!/bin/bash
 # User data script for EC2 instance initialization
 
+# Detect OS and package manager
+if command -v dnf &> /dev/null; then
+  # Amazon Linux 2023 uses dnf
+  PKG_MANAGER=dnf
+  UPDATE_CMD="dnf update -y"
+  INSTALL_CMD="dnf install -y"
+elif command -v yum &> /dev/null; then
+  # Amazon Linux 2 uses yum
+  PKG_MANAGER=yum
+  UPDATE_CMD="yum update -y"
+  INSTALL_CMD="yum install -y"
+else
+  echo "ERROR: No supported package manager found"
+  exit 1
+fi
+
 # Update system
-yum update -y
+$UPDATE_CMD
 
 # Install Python 3.9 and pip
-# On Amazon Linux 2, Python 3.9 is available via Amazon Linux Extras
 if command -v amazon-linux-extras &> /dev/null; then
+  # Amazon Linux 2 - use Amazon Linux Extras
+  echo "Installing Python 3.9 on Amazon Linux 2..."
   amazon-linux-extras enable python3.9
-  yum clean metadata
-  yum install -y python3.9 python3.9-pip git
+  $PKG_MANAGER clean metadata
+  $INSTALL_CMD python3.9 python3.9-pip git
 else
-  # For Amazon Linux 2023 or other distributions
-  yum install -y python3.9 python3.9-pip git || yum install -y python39 python39-pip git
+  # Amazon Linux 2023 or other - Python 3.9+ should be available by default
+  echo "Installing Python 3.9 on Amazon Linux 2023..."
+  $INSTALL_CMD python3.9 python3.9-pip git || $INSTALL_CMD python3 python3-pip git
 fi
 
 # Install CloudWatch agent
-yum install -y amazon-cloudwatch-agent
+$INSTALL_CMD amazon-cloudwatch-agent
 
 # Create application directory
 mkdir -p /opt/trading-bot
@@ -29,8 +47,29 @@ cd /opt/trading-bot
 # Alternative: Use S3 to deploy code
 # aws s3 cp s3://your-bucket/trading-bot/ /opt/trading-bot/ --recursive
 
+# Determine Python command
+if command -v python3.9 &> /dev/null; then
+  PYTHON_CMD=python3.9
+elif command -v python3 &> /dev/null; then
+  # Check if python3 is 3.9+
+  PYTHON3_VERSION=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>/dev/null || echo "0.0")
+  PYTHON3_MAJOR=$(echo $PYTHON3_VERSION | cut -d. -f1)
+  PYTHON3_MINOR=$(echo $PYTHON3_VERSION | cut -d. -f2)
+  if [ "$PYTHON3_MAJOR" -eq 3 ] && [ "$PYTHON3_MINOR" -ge 9 ]; then
+    PYTHON_CMD=python3
+    # Create symlink for consistency
+    ln -sf $(which python3) /usr/local/bin/python3.9 2>/dev/null || true
+  else
+    PYTHON_CMD=python3
+    echo "WARNING: Python version is $PYTHON3_VERSION, but 3.9+ is recommended"
+  fi
+else
+  echo "ERROR: Python 3 not found"
+  exit 1
+fi
+
 # Create virtual environment
-python3.9 -m venv venv
+$PYTHON_CMD -m venv venv
 source venv/bin/activate
 
 # Install dependencies

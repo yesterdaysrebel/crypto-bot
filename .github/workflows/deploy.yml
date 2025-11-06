@@ -408,9 +408,25 @@ jobs:
             sudo chown -R ec2-user:ec2-user /opt/trading-bot
             
             echo "Installing Python 3.9 if not available..."
+            PYTHON39_INSTALLED=false
+            
+            # Detect package manager
+            if command -v dnf &> /dev/null; then
+              PKG_MANAGER=dnf
+              UPDATE_CMD="sudo dnf update -y"
+              INSTALL_CMD="sudo dnf install -y"
+            elif command -v yum &> /dev/null; then
+              PKG_MANAGER=yum
+              UPDATE_CMD="sudo yum update -y"
+              INSTALL_CMD="sudo yum install -y"
+            else
+              echo "ERROR: No supported package manager found"
+              exit 1
+            fi
+            
             if ! command -v python3.9 &> /dev/null; then
               echo "Python 3.9 not found, installing..."
-              sudo yum update -y
+              $UPDATE_CMD
               
               # Check if we're on Amazon Linux 2
               if [ -f /etc/system-release ]; then
@@ -418,27 +434,91 @@ jobs:
                 echo "Detected: $AMAZON_LINUX_VERSION"
                 
                 if echo "$AMAZON_LINUX_VERSION" | grep -q "Amazon Linux 2"; then
-                  echo "Installing Python 3.9 from Amazon Linux Extras..."
-                  sudo amazon-linux-extras enable python3.9
-                  sudo yum clean metadata
-                  sudo yum install -y python3.9 python3.9-pip python3.9-devel gcc || {
-                    echo "Amazon Linux Extras failed, trying EPEL..."
-                    sudo yum install -y epel-release
-                    sudo yum install -y python39 python39-pip python39-devel gcc || {
-                      echo "⚠️  Failed to install Python 3.9 via package manager"
-                      echo "Will attempt to use existing Python 3 and adjust requirements if needed"
-                    }
-                  }
+                  echo "Attempting Method 1: Amazon Linux Extras..."
+                  if sudo amazon-linux-extras enable python3.9 2>/dev/null; then
+                    sudo $PKG_MANAGER clean metadata
+                    if $INSTALL_CMD python3.9 python3.9-pip python3.9-devel gcc 2>/dev/null; then
+                      PYTHON39_INSTALLED=true
+                      echo "✅ Python 3.9 installed via Amazon Linux Extras"
+                    fi
+                  fi
+                  
+                  if [ "$PYTHON39_INSTALLED" = false ]; then
+                    echo "Attempting Method 2: EPEL repository..."
+                    if $INSTALL_CMD epel-release 2>/dev/null; then
+                      if $INSTALL_CMD python39 python39-pip python39-devel gcc 2>/dev/null; then
+                        PYTHON39_INSTALLED=true
+                        echo "✅ Python 3.9 installed via EPEL"
+                      fi
+                    fi
+                  fi
+                  
+                  if [ "$PYTHON39_INSTALLED" = false ] && [ "$PKG_MANAGER" = "yum" ]; then
+                    echo "Attempting Method 3: IUS repository..."
+                    $INSTALL_CMD https://repo.ius.io/ius-release-el7.rpm 2>/dev/null || true
+                    if $INSTALL_CMD python39u python39u-pip python39u-devel gcc 2>/dev/null; then
+                      PYTHON39_INSTALLED=true
+                      echo "✅ Python 3.9 installed via IUS"
+                    fi
+                  fi
+                  
+                  if [ "$PYTHON39_INSTALLED" = false ]; then
+                    echo "Attempting Method 4: Installing Python 3.9 from source (this may take 5-10 minutes)..."
+                    if [ "$PKG_MANAGER" = "dnf" ]; then
+                      $INSTALL_CMD "Development Tools" 2>/dev/null || true
+                    else
+                      sudo yum groupinstall -y "Development Tools" 2>/dev/null || true
+                    fi
+                    $INSTALL_CMD openssl-devel bzip2-devel libffi-devel zlib-devel readline-devel sqlite-devel wget 2>/dev/null || true
+                    
+                    cd /tmp
+                    if [ ! -f Python-3.9.18.tgz ]; then
+                      wget -q https://www.python.org/ftp/python/3.9.18/Python-3.9.18.tgz
+                    fi
+                    if [ -f Python-3.9.18.tgz ]; then
+                      tar xzf Python-3.9.18.tgz
+                      cd Python-3.9.18
+                      ./configure --prefix=/usr/local --enable-optimizations --with-ensurepip=install 2>&1 | tail -20
+                      make -j$(nproc) 2>&1 | tail -20
+                      sudo make altinstall 2>&1 | tail -20
+                      cd /opt/trading-bot
+                      if command -v /usr/local/bin/python3.9 &> /dev/null; then
+                        PYTHON39_INSTALLED=true
+                        echo "✅ Python 3.9 installed from source"
+                      fi
+                    fi
+                  fi
                 else
                   # For Amazon Linux 2023 or other versions
                   echo "Installing Python 3.9 from default repositories..."
-                  sudo yum install -y python3.9 python3.9-pip python3.9-devel gcc || {
-                    sudo yum install -y python39 python39-pip python39-devel gcc || {
-                      echo "⚠️  Python 3.9 not available, will use system Python"
-                    }
-                  }
+                  # Amazon Linux 2023 should have Python 3.9+ by default, but might be named python3
+                  if $INSTALL_CMD python3.9 python3.9-pip python3.9-devel gcc 2>/dev/null; then
+                    PYTHON39_INSTALLED=true
+                  elif $INSTALL_CMD python39 python39-pip python39-devel gcc 2>/dev/null; then
+                    PYTHON39_INSTALLED=true
+                  elif $INSTALL_CMD python3 python3-pip python3-devel gcc 2>/dev/null; then
+                    # Check if python3 is 3.9+
+                    PYTHON3_VERSION=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>/dev/null || echo "0.0")
+                    PYTHON3_MAJOR=$(echo $PYTHON3_VERSION | cut -d. -f1)
+                    PYTHON3_MINOR=$(echo $PYTHON3_VERSION | cut -d. -f2)
+                    if [ "$PYTHON3_MAJOR" -eq 3 ] && [ "$PYTHON3_MINOR" -ge 9 ]; then
+                      # Create symlink python3.9 -> python3
+                      sudo ln -sf $(which python3) /usr/local/bin/python3.9 2>/dev/null || true
+                      PYTHON39_INSTALLED=true
+                      echo "✅ Python 3.9+ found as python3, creating symlink"
+                    fi
+                  fi
                 fi
               fi
+              
+              if [ "$PYTHON39_INSTALLED" = false ]; then
+                echo "❌ ERROR: Could not install Python 3.9 using any method"
+                echo "Please consider updating the AMI to Amazon Linux 2023 which has Python 3.9+ by default"
+                exit 1
+              fi
+            else
+              PYTHON39_INSTALLED=true
+              echo "✅ Python 3.9 already installed"
             fi
             
             echo "Checking Python version..."
