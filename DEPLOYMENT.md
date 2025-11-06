@@ -246,7 +246,7 @@ Add your Delta Exchange API credentials:
 ```bash
 DELTA_API_KEY=your_api_key_here
 DELTA_API_SECRET=your_api_secret_here
-DELTA_BASE_URL=https://api.delta.exchange
+DELTA_BASE_URL=https://api.india.delta.exchange
 DELTA_TESTNET=false
 
 TRADING_PRODUCTS=BTCUSD,ETHUSD

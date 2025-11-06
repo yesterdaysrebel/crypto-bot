@@ -15,11 +15,11 @@ class TestDeltaExchangeClient:
         client = DeltaExchangeClient(
             api_key="test_key",
             api_secret="test_secret",
-            base_url="https://api.delta.exchange"
+            base_url="https://api.india.delta.exchange"
         )
         assert client.api_key == "test_key"
         assert client.api_secret == "test_secret"
-        assert client.base_url == "https://api.delta.exchange"
+        assert client.base_url == "https://api.india.delta.exchange"
         assert "api-key" in client.session.headers
     
     @patch('collectors.delta_client.requests.Session')

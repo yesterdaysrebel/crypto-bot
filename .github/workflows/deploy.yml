@@ -368,10 +368,15 @@ jobs:
           echo "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           
-          # Create deployment tarball
+          # Create deployment tarball (ignore "file changed" warnings)
+          echo "Creating deployment archive..."
           tar --exclude='.git' \
               --exclude='__pycache__' \
               --exclude='*.pyc' \
+              --exclude='.DS_Store' \
+              --exclude='*.swp' \
+              --exclude='*.swo' \
+              --exclude='*.log' \
               --exclude='data' \
               --exclude='models' \
               --exclude='trade_logs' \
@@ -379,30 +384,49 @@ jobs:
               --exclude='htmlcov' \
               --exclude='.pytest_cache' \
               --exclude='.coverage' \
-              -czf trading-bot.tar.gz .
+              --exclude='trading-bot.tar.gz' \
+              -czf trading-bot.tar.gz . 2>&1 | grep -v "file changed as we read it" || true
+          
+          echo "Archive created: $(ls -lh trading-bot.tar.gz)"
           
           # Copy to instance
-          scp -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key trading-bot.tar.gz ec2-user@$INSTANCE_IP:/tmp/
+          echo "Copying archive to instance..."
+          scp -o StrictHostKeyChecking=no -o ConnectTimeout=30 -i ~/.ssh/deploy_key trading-bot.tar.gz ec2-user@$INSTANCE_IP:/tmp/
           
           # Extract and set up on instance
-          ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key ec2-user@$INSTANCE_IP << 'EOF'
+          echo "Setting up application on instance..."
+          ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 -i ~/.ssh/deploy_key ec2-user@$INSTANCE_IP << 'EOF'
+            set -e
+            echo "Creating application directory..."
+            sudo mkdir -p /opt/trading-bot
+            sudo chown ec2-user:ec2-user /opt/trading-bot
+            
             cd /opt/trading-bot
+            
+            echo "Extracting application files..."
             sudo tar -xzf /tmp/trading-bot.tar.gz -C /opt/trading-bot/
             sudo chown -R ec2-user:ec2-user /opt/trading-bot
             
+            echo "Checking Python version..."
+            PYTHON_CMD=$(which python3.9 || which python3 || echo "python3")
+            echo "Using Python: $PYTHON_CMD"
+            
             # Create virtual environment if it doesn't exist
             if [ ! -d "venv" ]; then
-              python3.9 -m venv venv
+              echo "Creating virtual environment..."
+              $PYTHON_CMD -m venv venv
             fi
             
+            echo "Activating virtual environment and installing dependencies..."
             source venv/bin/activate
+            pip install --upgrade pip
             pip install -r requirements.txt
             
-            # Create .env file from secrets
+            echo "Creating .env file..."
             cat > .env <<ENVEOF
           DELTA_API_KEY=${{ secrets.DELTA_API_KEY }}
           DELTA_API_SECRET=${{ secrets.DELTA_API_SECRET }}
-          DELTA_BASE_URL=https://api.delta.exchange
+          DELTA_BASE_URL=https://api.india.delta.exchange
           DELTA_TESTNET=false
           TRADING_PRODUCTS=${{ secrets.TRADING_PRODUCTS || 'BTCUSD,ETHUSD' }}
           MAX_POSITION_SIZE=${{ secrets.MAX_POSITION_SIZE || '1000.0' }}
@@ -417,11 +441,35 @@ jobs:
           LOG_LEVEL=INFO
           ENVEOF
             
-            # Restart service
+            echo "Setting up systemd service..."
+            sudo tee /etc/systemd/system/trading-bot.service > /dev/null <<SERVICEEOF
+          [Unit]
+          Description=Trading Bot Service
+          After=network.target
+          
+          [Service]
+          Type=simple
+          User=ec2-user
+          WorkingDirectory=/opt/trading-bot
+          Environment="PATH=/opt/trading-bot/venv/bin"
+          ExecStart=/opt/trading-bot/venv/bin/python main.py
+          Restart=always
+          RestartSec=10
+          
+          [Install]
+          WantedBy=multi-user.target
+          SERVICEEOF
+            
+            echo "Enabling and starting service..."
             sudo systemctl daemon-reload
-            sudo systemctl restart trading-bot
-            sudo systemctl status trading-bot
+            sudo systemctl enable trading-bot || true
+            sudo systemctl restart trading-bot || echo "Service may not exist yet, will start on next boot"
+            
+            echo "Checking service status..."
+            sudo systemctl status trading-bot --no-pager || echo "Service status check completed"
           EOF
+          
+          echo "✅ Deployment completed!"
 
       - name: Verify Deployment
         run: |

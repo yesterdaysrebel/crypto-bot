@@ -9,7 +9,7 @@ class DeltaExchangeConfig:
     """Delta Exchange API configuration."""
     api_key: str
     api_secret: str
-    base_url: str = "https://api.delta.exchange"
+    base_url: str = "https://api.india.delta.exchange"
     testnet: bool = False
     
     @classmethod
@@ -18,7 +18,7 @@ class DeltaExchangeConfig:
         return cls(
             api_key=os.getenv("DELTA_API_KEY", ""),
             api_secret=os.getenv("DELTA_API_SECRET", ""),
-            base_url=os.getenv("DELTA_BASE_URL", "https://api.delta.exchange"),
+            base_url=os.getenv("DELTA_BASE_URL", "https://api.india.delta.exchange"),
             testnet=os.getenv("DELTA_TESTNET", "false").lower() == "true"
         )
 

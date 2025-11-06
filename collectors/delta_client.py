@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 class DeltaExchangeClient:
     """Client for Delta Exchange API."""
     
-    def __init__(self, api_key: str, api_secret: str, base_url: str = "https://api.delta.exchange"):
+    def __init__(self, api_key: str, api_secret: str, base_url: str = "https://api.india.delta.exchange"):
         """
         Initialize Delta Exchange client.
         

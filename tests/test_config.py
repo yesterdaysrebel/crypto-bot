@@ -14,14 +14,14 @@ class TestDeltaExchangeConfig:
         with patch.dict(os.environ, {
             'DELTA_API_KEY': 'test_key',
             'DELTA_API_SECRET': 'test_secret',
-            'DELTA_BASE_URL': 'https://api.delta.exchange',
+            'DELTA_BASE_URL': 'https://api.india.delta.exchange',
             'DELTA_TESTNET': 'false'
         }):
             config = DeltaExchangeConfig.from_env()
             
             assert config.api_key == 'test_key'
             assert config.api_secret == 'test_secret'
-            assert config.base_url == 'https://api.delta.exchange'
+            assert config.base_url == 'https://api.india.delta.exchange'
             assert config.testnet is False
     
     def test_from_env_defaults(self):
@@ -30,7 +30,7 @@ class TestDeltaExchangeConfig:
             config = DeltaExchangeConfig.from_env()
             
             assert config.api_key == ''
-            assert config.base_url == 'https://api.delta.exchange'
+            assert config.base_url == 'https://api.india.delta.exchange'
             assert config.testnet is False
 
 

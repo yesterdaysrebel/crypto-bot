@@ -88,7 +88,7 @@ def mock_config(temp_dir):
     config.delta = DeltaExchangeConfig(
         api_key="test_api_key",
         api_secret="test_api_secret",
-        base_url="https://api.delta.exchange"
+        base_url="https://api.india.delta.exchange"
     )
     config.trading = TradingConfig(
         max_position_size=1000.0,
