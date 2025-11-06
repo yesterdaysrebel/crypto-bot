@@ -49,7 +49,8 @@ data "aws_ami" "amazon_linux_2" {
 }
 
 # Data source to check if an instance already exists
-data "aws_instances" "existing" {
+# First try to find by tags (preferred method)
+data "aws_instances" "existing_by_tags" {
   filter {
     name   = "tag:Name"
     values = ["${var.project_name}-${var.environment}"]
@@ -66,10 +67,24 @@ data "aws_instances" "existing" {
   }
 }
 
+# Fallback: Find any running instances (in case tags are missing)
+# This is a broader search - we'll prefer tagged instances
+data "aws_instances" "existing_any" {
+  filter {
+    name   = "instance-state-name"
+    values = ["running", "stopped", "stopping", "pending"]
+  }
+}
+
+# Use tagged instances if found, otherwise use any running instance
+locals {
+  existing_instance_ids = length(data.aws_instances.existing_by_tags.ids) > 0 ? data.aws_instances.existing_by_tags.ids : data.aws_instances.existing_any.ids
+}
+
 # Data source to get details of existing instance
 data "aws_instance" "existing" {
-  count       = length(data.aws_instances.existing.ids) > 0 ? 1 : 0
-  instance_id = data.aws_instances.existing.ids[0]
+  count       = length(local.existing_instance_ids) > 0 ? 1 : 0
+  instance_id = local.existing_instance_ids[0]
 }
 
 # Use AL2023 if available, otherwise fallback to AL2
@@ -77,7 +92,7 @@ locals {
   ami_id = try(data.aws_ami.amazon_linux_2023.id, data.aws_ami.amazon_linux_2.id)
   
   # Get existing instance ID if it exists
-  existing_instance_id = length(data.aws_instances.existing.ids) > 0 ? data.aws_instances.existing.ids[0] : null
+  existing_instance_id = length(local.existing_instance_ids) > 0 ? local.existing_instance_ids[0] : null
 }
 
 # Data source for availability zones
@@ -326,7 +341,7 @@ resource "aws_eip_association" "trading_bot" {
 
 # EC2 instance (using spot if enabled)
 resource "aws_instance" "trading_bot" {
-  count = var.use_spot_instance ? 0 : (length(data.aws_instances.existing.ids) > 0 ? 0 : 1)
+  count = var.use_spot_instance ? 0 : (length(local.existing_instance_ids) > 0 ? 0 : 1)
 
   ami           = local.ami_id
   instance_type = var.instance_type
@@ -393,7 +408,7 @@ resource "aws_instance" "trading_bot" {
 
 # Spot instance request (if using spot)
 resource "aws_spot_instance_request" "trading_bot" {
-  count = var.use_spot_instance ? (length(data.aws_instances.existing.ids) > 0 ? 0 : 1) : 0
+  count = var.use_spot_instance ? (length(local.existing_instance_ids) > 0 ? 0 : 1) : 0
 
   ami           = local.ami_id
   instance_type = var.instance_type

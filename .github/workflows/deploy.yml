@@ -197,17 +197,26 @@ jobs:
           ssh_key_name = "${{ secrets.AWS_SSH_KEY_NAME }}"
           EOF
 
-      - name: Check for Existing Instance
+      - name: Check and Tag Existing Instance
         working-directory: ./infra/terraform
         continue-on-error: true
         run: |
           echo "🔍 Checking for existing EC2 instance..."
           
-          # Check if instance with our naming convention exists
+          # First, check if instance with our naming convention exists
           EXISTING_INSTANCE=$(aws ec2 describe-instances \
             --filters "Name=tag:Name,Values=trading-bot-production" "Name=tag:Project,Values=trading-bot" "Name=instance-state-name,Values=running,stopped,stopping,pending" \
             --query 'Reservations[*].Instances[0].InstanceId' \
             --output text 2>/dev/null | head -n1 || echo "")
+          
+          # If not found by tags, look for any running instances (might be untagged)
+          if [ -z "$EXISTING_INSTANCE" ] || [ "$EXISTING_INSTANCE" = "None" ] || [ "$EXISTING_INSTANCE" = "null" ]; then
+            echo "🔍 No tagged instance found, checking for any running instances..."
+            EXISTING_INSTANCE=$(aws ec2 describe-instances \
+              --filters "Name=instance-state-name,Values=running" \
+              --query 'Reservations[*].Instances[0].InstanceId' \
+              --output text 2>/dev/null | head -n1 || echo "")
+          fi
           
           if [ -n "$EXISTING_INSTANCE" ] && [ "$EXISTING_INSTANCE" != "None" ] && [ "$EXISTING_INSTANCE" != "null" ]; then
             echo "✅ Found existing instance: $EXISTING_INSTANCE"
@@ -215,6 +224,34 @@ jobs:
             aws ec2 describe-instances --instance-ids "$EXISTING_INSTANCE" \
               --query 'Reservations[0].Instances[0].[InstanceId,State.Name,PublicIpAddress,PrivateIpAddress,Tags[?Key==`Name`].Value|[0]]' \
               --output table --region ${{ env.AWS_REGION }}
+            
+            # Check if instance has the required tags
+            HAS_NAME_TAG=$(aws ec2 describe-instances --instance-ids "$EXISTING_INSTANCE" \
+              --query 'Reservations[0].Instances[0].Tags[?Key==`Name`].Value' \
+              --output text --region ${{ env.AWS_REGION }} || echo "")
+            
+            HAS_PROJECT_TAG=$(aws ec2 describe-instances --instance-ids "$EXISTING_INSTANCE" \
+              --query 'Reservations[0].Instances[0].Tags[?Key==`Project`].Value' \
+              --output text --region ${{ env.AWS_REGION }} || echo "")
+            
+            # Tag the instance if it doesn't have the required tags
+            if [ "$HAS_NAME_TAG" != "trading-bot-production" ] || [ -z "$HAS_PROJECT_TAG" ]; then
+              echo ""
+              echo "🏷️  Tagging existing instance with required tags..."
+              aws ec2 create-tags \
+                --resources "$EXISTING_INSTANCE" \
+                --tags \
+                  "Key=Name,Value=trading-bot-production" \
+                  "Key=Project,Value=trading-bot" \
+                  "Key=Environment,Value=production" \
+                  "Key=ManagedBy,Value=Terraform" \
+                  "Key=CreatedBy,Value=Terraform" \
+                --region ${{ env.AWS_REGION }}
+              echo "✅ Instance tagged successfully"
+            else
+              echo "✅ Instance already has correct tags"
+            fi
+            
             echo ""
             echo "ℹ️  Terraform will use this existing instance instead of creating a new one"
           else
