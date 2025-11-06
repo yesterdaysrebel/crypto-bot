@@ -71,11 +71,16 @@ class TradeLogger:
         if log_format in ['json', 'both']:
             self.json_log_file = self.log_dir / f"trades_{timestamp}.jsonl"
             self.json_log_file.touch()
+            self.signals_json_log_file = self.log_dir / f"signals_{timestamp}.jsonl"
+            self.signals_json_log_file.touch()
         
         if log_format in ['csv', 'both']:
             self.csv_log_file = self.log_dir / f"trades_{timestamp}.csv"
             if not self.csv_log_file.exists():
                 self._initialize_csv_file()
+            self.signals_csv_log_file = self.log_dir / f"signals_{timestamp}.csv"
+            if not self.signals_csv_log_file.exists():
+                self._initialize_signals_csv_file()
         
         # In-memory trade storage for quick access
         self.trades: List[Trade] = []
@@ -91,6 +96,17 @@ class TradeLogger:
         ]
         
         with open(self.csv_log_file, 'w', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(headers)
+    
+    def _initialize_signals_csv_file(self):
+        """Initialize signals CSV file with headers."""
+        headers = [
+            'timestamp', 'symbol', 'strategy', 'signal_action', 
+            'signal_confidence', 'signal_reason', 'current_price'
+        ]
+        
+        with open(self.signals_csv_log_file, 'w', newline='') as f:
             writer = csv.writer(f)
             writer.writerow(headers)
     
@@ -279,6 +295,37 @@ class TradeLogger:
             signal_reason: Reason for signal
             current_price: Current market price
         """
+        timestamp = datetime.now().isoformat()
+        signal_data = {
+            'timestamp': timestamp,
+            'symbol': symbol,
+            'strategy': strategy,
+            'signal_action': signal_action,
+            'signal_confidence': signal_confidence,
+            'signal_reason': signal_reason,
+            'current_price': current_price
+        }
+        
+        # Write to JSON file
+        if self.log_format in ['json', 'both']:
+            with open(self.signals_json_log_file, 'a') as f:
+                f.write(json.dumps(signal_data) + '\n')
+        
+        # Write to CSV file
+        if self.log_format in ['csv', 'both']:
+            with open(self.signals_csv_log_file, 'a', newline='') as f:
+                writer = csv.writer(f)
+                writer.writerow([
+                    signal_data['timestamp'],
+                    signal_data['symbol'],
+                    signal_data['strategy'],
+                    signal_data['signal_action'],
+                    signal_data['signal_confidence'],
+                    signal_data['signal_reason'],
+                    signal_data['current_price']
+                ])
+        
+        # Console logging
         if self.enable_console:
             logger.info(
                 f"SIGNAL: {signal_action.upper()} {symbol} @ ${current_price:.2f} "
