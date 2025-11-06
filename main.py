@@ -9,6 +9,14 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 import pandas as pd
 
+# Try to load .env file if python-dotenv is available
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    # python-dotenv not installed, skip .env loading
+    pass
+
 from config.config import Config
 from collectors.delta_client import DeltaExchangeClient
 from collectors.data_collector import DataCollector
@@ -123,6 +131,16 @@ class TradingBot:
             
             # Create ML strategy for each product
             logger.info(f"Creating strategies for {len(self.config.trading.products)} products: {self.config.trading.products}")
+            logger.info(f"Available products in product_map: {list(self.product_map.keys())[:10]}..." if len(self.product_map) > 10 else f"Available products in product_map: {list(self.product_map.keys())}")
+            
+            if not self.product_map:
+                logger.error("Product map is empty! Cannot create strategies. Check product initialization.")
+                return
+            
+            if not self.config.trading.products:
+                logger.error("No trading products configured! Set TRADING_PRODUCTS environment variable.")
+                return
+            
             for symbol in self.config.trading.products:
                 if symbol in self.product_map:
                     strategy_config = {
@@ -142,8 +160,17 @@ class TradingBot:
                                f"position_size: {strategy_config['position_size']:.4f})")
                 else:
                     logger.warning(f"  ✗ Product {symbol} not found in product map, skipping strategy creation")
+                    logger.warning(f"     Available symbols: {list(self.product_map.keys())[:20]}")
             
-            logger.info(f"Successfully initialized {len(self.strategies)} strategies")
+            if len(self.strategies) == 0:
+                logger.error("=" * 60)
+                logger.error("WARNING: No strategies were initialized!")
+                logger.error(f"Configured products: {self.config.trading.products}")
+                logger.error(f"Available products: {list(self.product_map.keys())[:20]}")
+                logger.error("Check that your TRADING_PRODUCTS match the available product symbols.")
+                logger.error("=" * 60)
+            else:
+                logger.info(f"Successfully initialized {len(self.strategies)} strategies")
         except Exception as e:
             logger.error(f"Error initializing strategies: {e}", exc_info=True)
     
@@ -408,13 +435,30 @@ class TradingBot:
     
     def start(self):
         """Start the trading bot."""
+        logger.info("=" * 60)
         logger.info("Starting trading bot...")
+        logger.info("=" * 60)
         
         # Initialize
+        logger.info("Step 1: Initializing products...")
         self.initialize_products()
+        
+        logger.info("Step 2: Initializing strategies...")
         self.initialize_strategies()
         
+        if len(self.strategies) == 0:
+            logger.error("=" * 60)
+            logger.error("CRITICAL: No strategies initialized! Bot will not trade.")
+            logger.error("=" * 60)
+            logger.error("Please check:")
+            logger.error("  1. TRADING_PRODUCTS environment variable is set correctly")
+            logger.error("  2. Product symbols match what's available on the exchange")
+            logger.error("  3. Product initialization was successful")
+            logger.error("=" * 60)
+            return
+        
         # Train ML models on first run
+        logger.info("Step 3: Training ML models...")
         self.train_ml_models()
         
         self.running = True
@@ -422,8 +466,13 @@ class TradingBot:
         last_retrain_time = time.time()
         retrain_interval_seconds = self.config.ml.retrain_interval_hours * 3600
         
-        logger.info("Trading bot started")
-        logger.info(f"Model retrain interval: {self.config.ml.retrain_interval_hours} hours")
+        logger.info("=" * 60)
+        logger.info("Trading bot started successfully!")
+        logger.info(f"  - Strategies active: {len(self.strategies)}")
+        logger.info(f"  - Products configured: {self.config.trading.products}")
+        logger.info(f"  - Model retrain interval: {self.config.ml.retrain_interval_hours} hours")
+        logger.info(f"  - Cycle interval: {cycle_interval} seconds")
+        logger.info("=" * 60)
         
         while self.running:
             try:

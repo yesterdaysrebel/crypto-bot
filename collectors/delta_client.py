@@ -370,9 +370,14 @@ class DeltaExchangeClient:
         Returns:
             Order response
         """
+        # Convert size to integer (Delta Exchange requires integer contract sizes)
+        # For fractional sizes, we need to calculate based on contract size
+        # For now, convert to int - minimum 1 contract
+        size_int = int(abs(size)) if abs(size) >= 1 else 1
+        
         data = {
             "product_id": product_id,
-            "size": abs(size) if side == "buy" else -abs(size),
+            "size": size_int if side == "buy" else -size_int,
             "side": side,
             "order_type": order_type,
             "reduce_only": reduce_only,
