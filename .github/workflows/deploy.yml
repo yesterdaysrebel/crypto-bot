@@ -590,6 +590,7 @@ jobs:
           User=ec2-user
           WorkingDirectory=/opt/trading-bot
           Environment="PATH=/opt/trading-bot/venv/bin"
+          EnvironmentFile=/opt/trading-bot/.env
           ExecStart=/opt/trading-bot/venv/bin/python main.py
           Restart=always
           RestartSec=10
