@@ -48,9 +48,36 @@ data "aws_ami" "amazon_linux_2" {
   }
 }
 
+# Data source to check if an instance already exists
+data "aws_instances" "existing" {
+  filter {
+    name   = "tag:Name"
+    values = ["${var.project_name}-${var.environment}"]
+  }
+  
+  filter {
+    name   = "instance-state-name"
+    values = ["running", "stopped", "stopping", "pending"]
+  }
+  
+  filter {
+    name   = "tag:Project"
+    values = [var.project_name]
+  }
+}
+
+# Data source to get details of existing instance
+data "aws_instance" "existing" {
+  count       = length(data.aws_instances.existing.ids) > 0 ? 1 : 0
+  instance_id = data.aws_instances.existing.ids[0]
+}
+
 # Use AL2023 if available, otherwise fallback to AL2
 locals {
   ami_id = try(data.aws_ami.amazon_linux_2023.id, data.aws_ami.amazon_linux_2.id)
+  
+  # Get existing instance ID if it exists
+  existing_instance_id = length(data.aws_instances.existing.ids) > 0 ? data.aws_instances.existing.ids[0] : null
 }
 
 # Data source for availability zones
@@ -299,7 +326,7 @@ resource "aws_eip_association" "trading_bot" {
 
 # EC2 instance (using spot if enabled)
 resource "aws_instance" "trading_bot" {
-  count = var.use_spot_instance ? 0 : 1
+  count = var.use_spot_instance ? 0 : (length(data.aws_instances.existing.ids) > 0 ? 0 : 1)
 
   ami           = local.ami_id
   instance_type = var.instance_type
@@ -324,7 +351,7 @@ resource "aws_instance" "trading_bot" {
     delete_on_termination = true  # Don't keep volume after termination
 
     tags = {
-      Name = "${var.project_name}-root-volume"
+      Name = "${var.project_name}-${var.environment}-root-volume"
       Environment = var.environment
       Project = var.project_name
     }
@@ -343,18 +370,30 @@ resource "aws_instance" "trading_bot" {
     http_put_response_hop_limit = 1
   }
 
+  # Lifecycle rules to prevent accidental recreation
+  lifecycle {
+    create_before_destroy = false
+    ignore_changes = [
+      # Ignore changes to user_data to allow updates without recreation
+      user_data,
+      # Ignore AMI changes (will update on next manual refresh)
+      ami,
+    ]
+  }
+
   tags = {
-    Name = var.project_name
+    Name = "${var.project_name}-${var.environment}"
     Environment = var.environment
     Project = var.project_name
     ManagedBy = "Terraform"
     InstanceType = var.instance_type
+    CreatedBy = "Terraform"
   }
 }
 
 # Spot instance request (if using spot)
 resource "aws_spot_instance_request" "trading_bot" {
-  count = var.use_spot_instance ? 1 : 0
+  count = var.use_spot_instance ? (length(data.aws_instances.existing.ids) > 0 ? 0 : 1) : 0
 
   ami           = local.ami_id
   instance_type = var.instance_type
@@ -373,6 +412,15 @@ resource "aws_spot_instance_request" "trading_bot" {
 
   # User data script
   user_data = file("${path.module}/user_data.sh")
+  
+  # Lifecycle rules to prevent accidental recreation
+  lifecycle {
+    create_before_destroy = false
+    ignore_changes = [
+      user_data,
+      ami,
+    ]
+  }
 
   # EBS root volume configuration
   root_block_device {
@@ -390,12 +438,13 @@ resource "aws_spot_instance_request" "trading_bot" {
   }
 
   tags = {
-    Name = "${var.project_name}-spot"
+    Name = "${var.project_name}-${var.environment}"
     Environment = var.environment
     Project = var.project_name
     ManagedBy = "Terraform"
     InstanceType = var.instance_type
     SpotInstance = "true"
+    CreatedBy = "Terraform"
   }
 }
 

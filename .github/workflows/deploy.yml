@@ -197,6 +197,30 @@ jobs:
           ssh_key_name = "${{ secrets.AWS_SSH_KEY_NAME }}"
           EOF
 
+      - name: Check for Existing Instance
+        working-directory: ./infra/terraform
+        continue-on-error: true
+        run: |
+          echo "🔍 Checking for existing EC2 instance..."
+          
+          # Check if instance with our naming convention exists
+          EXISTING_INSTANCE=$(aws ec2 describe-instances \
+            --filters "Name=tag:Name,Values=trading-bot-production" "Name=tag:Project,Values=trading-bot" "Name=instance-state-name,Values=running,stopped,stopping,pending" \
+            --query 'Reservations[*].Instances[0].InstanceId' \
+            --output text 2>/dev/null | head -n1 || echo "")
+          
+          if [ -n "$EXISTING_INSTANCE" ] && [ "$EXISTING_INSTANCE" != "None" ] && [ "$EXISTING_INSTANCE" != "null" ]; then
+            echo "✅ Found existing instance: $EXISTING_INSTANCE"
+            echo "📋 Instance details:"
+            aws ec2 describe-instances --instance-ids "$EXISTING_INSTANCE" \
+              --query 'Reservations[0].Instances[0].[InstanceId,State.Name,PublicIpAddress,PrivateIpAddress,Tags[?Key==`Name`].Value|[0]]' \
+              --output table --region ${{ env.AWS_REGION }}
+            echo ""
+            echo "ℹ️  Terraform will use this existing instance instead of creating a new one"
+          else
+            echo "ℹ️  No existing instance found, will create a new one"
+          fi
+          
       - name: Import Existing Resources (if they exist)
         working-directory: ./infra/terraform
         continue-on-error: true

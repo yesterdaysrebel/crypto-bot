@@ -118,16 +118,19 @@ class TradingBot:
             logger.info("Initializing trading strategies...")
             
             # Initialize ML predictor
+            # Include timeframe in model name to ensure timeframe-specific models
+            timeframe = self.config.trading.default_timeframe
             ml_predictor = MLPredictor(
                 model_path=self.config.ml.model_path,
                 model_type="random_forest"
             )
             
-            # Try to load existing model
-            if not ml_predictor.load_model():
-                logger.info("No existing model found, will train on first run")
+            # Try to load existing model for this timeframe
+            model_name = f"model_{timeframe}"
+            if not ml_predictor.load_model(name=model_name):
+                logger.info(f"No existing model found for timeframe {timeframe}, will train on first run")
             else:
-                logger.info("ML model loaded successfully")
+                logger.info(f"ML model loaded successfully for timeframe {timeframe}")
             
             # Create ML strategy for each product
             logger.info(f"Creating strategies for {len(self.config.trading.products)} products: {self.config.trading.products}")
@@ -277,8 +280,15 @@ class TradingBot:
                 X = pd.concat(all_features)
                 y = pd.concat(all_labels)
                 
+                # Train model with timeframe-specific name
                 metrics = predictor.train(X, y, retrain=True)
-                logger.info(f"ML model training completed: {metrics}")
+                
+                # Save model with timeframe in name
+                timeframe = self.config.trading.default_timeframe
+                model_name = f"model_{timeframe}"
+                predictor.save_model(name=model_name)
+                
+                logger.info(f"ML model training completed for timeframe {timeframe}: {metrics}")
             else:
                 logger.warning("Insufficient data for training")
         
