@@ -27,6 +27,11 @@ variable "spot_price" {
 variable "ssh_key_name" {
   description = "AWS SSH key pair name (required)"
   type        = string
+  
+  validation {
+    condition     = length(var.ssh_key_name) > 0 && var.ssh_key_name != ""
+    error_message = "SSH key name cannot be empty. Please provide a valid AWS key pair name."
+  }
 }
 
 variable "create_vpc" {

@@ -229,23 +229,6 @@ scp -i ~/.ssh/trading-bot-key.pem -r \
     . ec2-user@<instance-public-ip>:/opt/trading-bot/
 ```
 
-### Step 5.5: Verify API Connection (Before Deployment)
-
-**IMPORTANT:** Before deploying to AWS, verify your API connection works locally:
-
-```bash
-# Test API connectivity and authentication (no trades will be placed)
-python test_api.py
-```
-
-This dry-run test will verify:
-- ✓ API connection works
-- ✓ Authentication is correct
-- ✓ All endpoints are accessible
-- ✓ Configuration is valid
-
-**No trades will be placed** - this is completely safe. Fix any issues before deploying.
-
 ### Step 6: Configure Environment Variables
 
 SSH into the instance and set up environment variables:
@@ -442,11 +425,7 @@ sudo systemctl restart trading-bot
 # Verify environment variables
 cat /opt/trading-bot/.env
 
-# Test API connection (recommended - comprehensive test)
-cd /opt/trading-bot
-python3 test_api.py
-
-# Or quick test
+# Test API connection
 python3 -c "from config.config import Config; from collectors.delta_client import DeltaExchangeClient; c = Config(); client = DeltaExchangeClient(c.delta.api_key, c.delta.api_secret); print(client.get_products()[:1])"
 ```
 

@@ -125,6 +125,29 @@ jobs:
           aws sts get-caller-identity
           echo "✅ AWS credentials verified"
 
+      - name: Verify SSH Key Exists
+        run: |
+          SSH_KEY_NAME="${{ secrets.AWS_SSH_KEY_NAME }}"
+          if [ -z "$SSH_KEY_NAME" ]; then
+            echo "❌ ERROR: AWS_SSH_KEY_NAME secret is not set!"
+            exit 1
+          fi
+          
+          echo "Checking if SSH key pair '$SSH_KEY_NAME' exists in region ${{ env.AWS_REGION }}..."
+          if aws ec2 describe-key-pairs --key-names "$SSH_KEY_NAME" --region ${{ env.AWS_REGION }} &>/dev/null; then
+            echo "✅ SSH key pair '$SSH_KEY_NAME' exists"
+          else
+            echo "❌ ERROR: SSH key pair '$SSH_KEY_NAME' does NOT exist in region ${{ env.AWS_REGION }}"
+            echo ""
+            echo "Available key pairs:"
+            aws ec2 describe-key-pairs --region ${{ env.AWS_REGION }} --query 'KeyPairs[*].KeyName' --output table || echo "Could not list key pairs"
+            echo ""
+            echo "Please either:"
+            echo "1. Create the key pair in AWS Console: EC2 → Key Pairs → Create key pair"
+            echo "2. Update the AWS_SSH_KEY_NAME secret to match an existing key pair name"
+            exit 1
+          fi
+
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v3
         id: terraform
@@ -268,18 +291,58 @@ jobs:
         working-directory: ./infra/terraform
         id: instance-info
         run: |
-          echo "instance_id=$(terraform output -raw instance_id)" >> $GITHUB_OUTPUT
-          echo "instance_ip=$(terraform output -raw instance_public_ip)" >> $GITHUB_OUTPUT
-          echo "instance_dns=$(terraform output -raw instance_public_dns)" >> $GITHUB_OUTPUT
+          INSTANCE_ID=$(terraform output -raw instance_id)
+          INSTANCE_IP=$(terraform output -raw instance_public_ip)
+          INSTANCE_DNS=$(terraform output -raw instance_public_dns)
+          
+          echo "instance_id=$INSTANCE_ID" >> $GITHUB_OUTPUT
+          echo "instance_ip=$INSTANCE_IP" >> $GITHUB_OUTPUT
+          echo "instance_dns=$INSTANCE_DNS" >> $GITHUB_OUTPUT
+          
+          echo "Instance ID: $INSTANCE_ID"
+          echo "Instance IP: $INSTANCE_IP"
+          echo "Instance DNS: $INSTANCE_DNS"
+          
+          # Verify SSH key is assigned to the instance
+          echo ""
+          echo "Verifying SSH key is assigned to instance..."
+          KEY_NAME=$(aws ec2 describe-instances --instance-ids "$INSTANCE_ID" --query 'Reservations[0].Instances[0].KeyName' --output text --region ${{ env.AWS_REGION }})
+          
+          if [ -z "$KEY_NAME" ] || [ "$KEY_NAME" = "None" ] || [ "$KEY_NAME" = "null" ]; then
+            echo "❌ WARNING: No SSH key is assigned to the instance!"
+            echo "This may prevent SSH access."
+            echo ""
+            echo "Instance details:"
+            aws ec2 describe-instances --instance-ids "$INSTANCE_ID" --query 'Reservations[0].Instances[0].[InstanceId,KeyName,State.Name]' --output table --region ${{ env.AWS_REGION }}
+          else
+            echo "✅ SSH key '$KEY_NAME' is assigned to instance"
+          fi
 
       - name: Wait for Instance to be Ready
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.AWS_SSH_PRIVATE_KEY }}
+          INSTANCE_IP: ${{ steps.instance-info.outputs.instance_ip }}
         run: |
+          echo "Setting up SSH key..."
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          
+          echo "Instance IP: $INSTANCE_IP"
+          if [ -z "$INSTANCE_IP" ] || [ "$INSTANCE_IP" = "null" ]; then
+            echo "❌ ERROR: Instance IP is not available"
+            exit 1
+          fi
+          
           echo "Waiting for instance to be ready..."
           sleep 60  # Wait for instance to initialize
-          until ssh -o StrictHostKeyChecking=no -i ${{ secrets.AWS_SSH_PRIVATE_KEY }} ec2-user@${{ steps.instance-info.outputs.instance_ip }} 'echo "Instance ready"'; do
-            echo "Waiting for SSH..."
+          
+          echo "Testing SSH connection..."
+          until ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -i ~/.ssh/deploy_key ec2-user@$INSTANCE_IP 'echo "Instance ready"' 2>&1; do
+            echo "Waiting for SSH (attempting connection)..."
             sleep 10
           done
+          echo "✅ SSH connection successful!"
 
       - name: Deploy Application Code
         env:
@@ -407,6 +470,25 @@ jobs:
       - name: Verify AWS credentials
         run: |
           aws sts get-caller-identity
+
+      - name: Verify SSH Key Exists (Staging)
+        run: |
+          SSH_KEY_NAME="${{ secrets.AWS_SSH_KEY_NAME }}"
+          if [ -z "$SSH_KEY_NAME" ]; then
+            echo "❌ ERROR: AWS_SSH_KEY_NAME secret is not set!"
+            exit 1
+          fi
+          
+          echo "Checking if SSH key pair '$SSH_KEY_NAME' exists in region ${{ env.AWS_REGION }}..."
+          if aws ec2 describe-key-pairs --key-names "$SSH_KEY_NAME" --region ${{ env.AWS_REGION }} &>/dev/null; then
+            echo "✅ SSH key pair '$SSH_KEY_NAME' exists"
+          else
+            echo "❌ ERROR: SSH key pair '$SSH_KEY_NAME' does NOT exist in region ${{ env.AWS_REGION }}"
+            echo ""
+            echo "Available key pairs:"
+            aws ec2 describe-key-pairs --region ${{ env.AWS_REGION }} --query 'KeyPairs[*].KeyName' --output table || echo "Could not list key pairs"
+            exit 1
+          fi
 
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v3
