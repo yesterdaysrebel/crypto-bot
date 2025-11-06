@@ -86,6 +86,7 @@ class TradingBot:
     def initialize_products(self):
         """Initialize product mapping."""
         try:
+            logger.info("Initializing product mapping...")
             products = self.client.get_products()
             for product in products:
                 symbol = product.get('symbol')
@@ -93,12 +94,21 @@ class TradingBot:
                 if symbol and product_id:
                     self.product_map[symbol] = product_id
             logger.info(f"Initialized {len(self.product_map)} products")
+            if self.config.trading.products:
+                logger.info(f"Trading products configured: {self.config.trading.products}")
+                for symbol in self.config.trading.products:
+                    if symbol in self.product_map:
+                        logger.info(f"  ✓ {symbol} -> Product ID: {self.product_map[symbol]}")
+                    else:
+                        logger.warning(f"  ✗ {symbol} not found in product list")
         except Exception as e:
-            logger.error(f"Error initializing products: {e}")
+            logger.error(f"Error initializing products: {e}", exc_info=True)
     
     def initialize_strategies(self):
         """Initialize trading strategies."""
         try:
+            logger.info("Initializing trading strategies...")
+            
             # Initialize ML predictor
             ml_predictor = MLPredictor(
                 model_path=self.config.ml.model_path,
@@ -108,8 +118,11 @@ class TradingBot:
             # Try to load existing model
             if not ml_predictor.load_model():
                 logger.info("No existing model found, will train on first run")
+            else:
+                logger.info("ML model loaded successfully")
             
             # Create ML strategy for each product
+            logger.info(f"Creating strategies for {len(self.config.trading.products)} products: {self.config.trading.products}")
             for symbol in self.config.trading.products:
                 if symbol in self.product_map:
                     strategy_config = {
@@ -124,11 +137,15 @@ class TradingBot:
                         predictor=ml_predictor
                     )
                     self.strategies.append(strategy)
-                    logger.info(f"Initialized strategy: {strategy.name}")
+                    logger.info(f"  ✓ Initialized strategy: {strategy.name} "
+                               f"(confidence_threshold: {strategy_config['confidence_threshold']:.2f}, "
+                               f"position_size: {strategy_config['position_size']:.4f})")
+                else:
+                    logger.warning(f"  ✗ Product {symbol} not found in product map, skipping strategy creation")
             
-            logger.info(f"Initialized {len(self.strategies)} strategies")
+            logger.info(f"Successfully initialized {len(self.strategies)} strategies")
         except Exception as e:
-            logger.error(f"Error initializing strategies: {e}")
+            logger.error(f"Error initializing strategies: {e}", exc_info=True)
     
     def collect_market_data(self, symbol: str) -> Dict:
         """Collect market data for a symbol."""
@@ -141,6 +158,7 @@ class TradingBot:
             
             # If no historical data, collect fresh
             if ohlc_df.empty:
+                logger.info(f"  No existing data found, collecting fresh OHLC data for {symbol}...")
                 ohlc_df = self.data_collector.collect_ohlc(
                     symbol=symbol,
                     resolution=self.config.trading.default_timeframe,
@@ -148,12 +166,24 @@ class TradingBot:
                     save=True
                 )
             
+            if ohlc_df.empty:
+                logger.warning(f"  Failed to collect OHLC data for {symbol}")
+                return {}
+            
             # Collect orderbook
-            orderbook = self.data_collector.collect_orderbook(symbol)
+            try:
+                orderbook = self.data_collector.collect_orderbook(symbol)
+            except Exception as e:
+                logger.debug(f"  Could not collect orderbook for {symbol}: {e}")
+                orderbook = {}
             
             # Collect ticker
-            ticker_df = self.data_collector.get_ticker_data([symbol])
-            ticker = ticker_df.iloc[0].to_dict() if not ticker_df.empty else {}
+            try:
+                ticker_df = self.data_collector.get_ticker_data([symbol])
+                ticker = ticker_df.iloc[0].to_dict() if not ticker_df.empty else {}
+            except Exception as e:
+                logger.debug(f"  Could not collect ticker for {symbol}: {e}")
+                ticker = {}
             
             return {
                 'symbol': symbol,
@@ -163,7 +193,7 @@ class TradingBot:
                 'timestamp': datetime.now()
             }
         except Exception as e:
-            logger.error(f"Error collecting market data for {symbol}: {e}")
+            logger.error(f"Error collecting market data for {symbol}: {e}", exc_info=True)
             return {}
     
     def train_ml_models(self):
@@ -231,12 +261,24 @@ class TradingBot:
     def run_strategy(self, strategy: BaseStrategy, symbol: str):
         """Run a single strategy for a symbol."""
         if not strategy.is_active:
+            logger.warning(f"Strategy {strategy.name} is not active, skipping")
             return
         
         try:
             # Collect market data
+            logger.info(f"[{strategy.name}] Collecting market data for {symbol}...")
             market_data = self.collect_market_data(symbol)
-            if not market_data.get('ohlc') is not None:
+            
+            if not market_data or market_data.get('ohlc') is None:
+                logger.warning(f"[{strategy.name}] No market data collected for {symbol}")
+                return
+            
+            ohlc_df = market_data.get('ohlc')
+            if ohlc_df is not None and not ohlc_df.empty:
+                current_price = float(ohlc_df['close'].iloc[-1])
+                logger.info(f"[{strategy.name}] Market data collected: {len(ohlc_df)} candles, current price: {current_price:.2f}")
+            else:
+                logger.warning(f"[{strategy.name}] OHLC data is empty for {symbol}")
                 return
             
             # Update position in strategy
@@ -277,9 +319,15 @@ class TradingBot:
                 return
             
             # Generate signal
+            logger.info(f"[{strategy.name}] Generating signal for {symbol}...")
             signal = strategy.generate_signal(market_data)
             
-            # Log signal
+            # Log signal details (including hold signals)
+            logger.info(f"[{strategy.name}] Signal generated: {signal.action.upper()} | "
+                       f"Size: {signal.size:.4f} | "
+                       f"Confidence: {signal.confidence:.2f} | "
+                       f"Reason: {signal.reason}")
+            
             if signal.action != 'hold':
                 self.trade_logger.log_signal(
                     symbol=symbol,
@@ -289,6 +337,8 @@ class TradingBot:
                     signal_reason=signal.reason,
                     current_price=float(market_data.get('ohlc', pd.DataFrame()).iloc[-1]['close'] if not market_data.get('ohlc', pd.DataFrame()).empty else 0)
                 )
+            else:
+                logger.info(f"[{strategy.name}] Signal is HOLD - {signal.reason}")
             
             if signal.action != 'hold' and signal.size > 0:
                 product_id = self.product_map.get(symbol)
@@ -299,18 +349,27 @@ class TradingBot:
                         # Check if there are active orders for this symbol
                         active_orders = self.order_manager.get_active_orders(product_id)
                         if active_orders:
-                            logger.info(f"Active orders already exist for {symbol}, skipping new order")
+                            logger.info(f"[{strategy.name}] Active orders already exist for {symbol}, skipping new order")
                         else:
                             # Place new order (order manager will also check for positions and orders)
+                            logger.info(f"[{strategy.name}] Attempting to place {signal.action} order for {symbol} (size: {signal.size:.4f})")
                             order = self.order_manager.place_order_from_signal(
                                 signal, 
                                 product_id,
                                 position_manager=self.position_manager
                             )
                             if order:
-                                logger.info(f"Strategy {strategy.name} generated {signal.action} signal for {symbol}")
+                                logger.info(f"[{strategy.name}] ✓ Order placed successfully: {signal.action} {signal.size:.4f} for {symbol}")
+                            else:
+                                logger.warning(f"[{strategy.name}] ✗ Failed to place order for {symbol}")
                     else:
-                        logger.debug(f"Position already exists for {symbol}, skipping order placement")
+                        logger.info(f"[{strategy.name}] Position already exists for {symbol} ({existing_position.get('side')} {abs(existing_position.get('size', 0)):.4f}), skipping order placement")
+                else:
+                    logger.error(f"[{strategy.name}] Product ID not found for {symbol}")
+            elif signal.action == 'hold':
+                logger.debug(f"[{strategy.name}] No action taken - signal is HOLD")
+            elif signal.size == 0:
+                logger.warning(f"[{strategy.name}] Signal size is 0, skipping order placement")
         
         except Exception as e:
             logger.error(f"Error running strategy {strategy.name} for {symbol}: {e}")
@@ -318,18 +377,34 @@ class TradingBot:
     def run_cycle(self):
         """Run one trading cycle."""
         try:
+            logger.info("=" * 60)
+            logger.info("Starting trading cycle")
+            
             # Update positions
-            self.position_manager.update_positions()
+            positions = self.position_manager.update_positions()
+            if positions:
+                logger.info(f"Current positions: {list(positions.keys())}")
+                for symbol, pos in positions.items():
+                    logger.info(f"  {symbol}: {pos.get('side')} {abs(pos.get('size', 0)):.4f} @ {pos.get('entry_price', 0):.2f} (P&L: {pos.get('pnl', 0):.2f})")
+            else:
+                logger.info("No open positions")
             
             # Run each strategy for each product
+            logger.info(f"Running {len(self.strategies)} strategies")
             for strategy in self.strategies:
                 # Extract symbol from strategy name (format: ML_SYMBOL)
                 symbol = strategy.name.split('_', 1)[1] if '_' in strategy.name else None
                 if symbol and symbol in self.product_map:
+                    logger.info(f"Running strategy {strategy.name} for {symbol}")
                     self.run_strategy(strategy, symbol)
+                else:
+                    logger.warning(f"Strategy {strategy.name}: symbol {symbol} not found in product map")
+            
+            logger.info("Trading cycle completed")
+            logger.info("=" * 60)
         
         except Exception as e:
-            logger.error(f"Error in trading cycle: {e}")
+            logger.error(f"Error in trading cycle: {e}", exc_info=True)
     
     def start(self):
         """Start the trading bot."""
@@ -368,7 +443,8 @@ class TradingBot:
                 
                 # Log status
                 total_pnl = self.position_manager.get_total_pnl()
-                logger.info(f"Cycle completed. Total P&L: {total_pnl:.2f}")
+                num_positions = len(self.position_manager.get_all_positions())
+                logger.info(f"Cycle completed. Total P&L: {total_pnl:.2f} | Open positions: {num_positions}")
                 
                 # Print trade summary periodically (every 10 cycles)
                 if int(time.time()) % 600 == 0:  # Every 10 minutes

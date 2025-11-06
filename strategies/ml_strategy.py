@@ -1,6 +1,7 @@
 """ML-based trading strategy."""
 from typing import Dict
 import logging
+import numpy as np
 
 from strategies.base_strategy import BaseStrategy, Signal
 from features.feature_engineering import FeatureEngineer
@@ -61,10 +62,21 @@ class MLStrategy(BaseStrategy):
                 )
             
             # Get prediction
+            logger.debug(f"[{self.name}] Preparing features for prediction (last {len(features_df)} rows)")
+            predictions, probabilities = self.predictor.predict(features_df.tail(1))
             signal_value = self.predictor.predict_signal(
                 features_df.tail(1),
                 threshold=self.confidence_threshold
             )
+            
+            # Log prediction details
+            if len(probabilities) > 0 and len(probabilities[0]) >= 3:
+                prob = probabilities[0]
+                max_prob = float(np.max(prob))
+                logger.info(f"[{self.name}] ML Prediction: {int(predictions[0])} (confidence: {max_prob:.3f}, threshold: {self.confidence_threshold:.3f})")
+                logger.debug(f"[{self.name}] Class probabilities: {prob}")
+            else:
+                logger.warning(f"[{self.name}] Could not get prediction probabilities")
             
             # Get current price
             current_price = float(ohlc_df['close'].iloc[-1])
