@@ -225,20 +225,33 @@ jobs:
               --query 'Reservations[0].Instances[0].[InstanceId,State.Name,PublicIpAddress,PrivateIpAddress,Tags[?Key==`Name`].Value|[0]]' \
               --output table --region ${{ env.AWS_REGION }}
             
+            echo ""
+            echo "📋 Current tags on instance:"
+            aws ec2 describe-instances --instance-ids "$EXISTING_INSTANCE" \
+              --query 'Reservations[0].Instances[0].Tags' \
+              --output table --region ${{ env.AWS_REGION }} || echo "No tags found"
+            
             # Check if instance has the required tags
             HAS_NAME_TAG=$(aws ec2 describe-instances --instance-ids "$EXISTING_INSTANCE" \
               --query 'Reservations[0].Instances[0].Tags[?Key==`Name`].Value' \
-              --output text --region ${{ env.AWS_REGION }} || echo "")
+              --output text --region ${{ env.AWS_REGION }} 2>/dev/null || echo "")
             
             HAS_PROJECT_TAG=$(aws ec2 describe-instances --instance-ids "$EXISTING_INSTANCE" \
               --query 'Reservations[0].Instances[0].Tags[?Key==`Project`].Value' \
-              --output text --region ${{ env.AWS_REGION }} || echo "")
+              --output text --region ${{ env.AWS_REGION }} 2>/dev/null || echo "")
+            
+            echo ""
+            echo "Current Name tag: '$HAS_NAME_TAG'"
+            echo "Current Project tag: '$HAS_PROJECT_TAG'"
             
             # Tag the instance if it doesn't have the required tags
-            if [ "$HAS_NAME_TAG" != "trading-bot-production" ] || [ -z "$HAS_PROJECT_TAG" ]; then
+            if [ "$HAS_NAME_TAG" != "trading-bot-production" ] || [ -z "$HAS_PROJECT_TAG" ] || [ "$HAS_PROJECT_TAG" = "None" ]; then
               echo ""
               echo "🏷️  Tagging existing instance with required tags..."
-              aws ec2 create-tags \
+              echo "Instance ID: $EXISTING_INSTANCE"
+              
+              # Always tag the instance (create-tags will update if tags exist)
+              TAG_RESULT=$(aws ec2 create-tags \
                 --resources "$EXISTING_INSTANCE" \
                 --tags \
                   "Key=Name,Value=trading-bot-production" \
@@ -246,8 +259,20 @@ jobs:
                   "Key=Environment,Value=production" \
                   "Key=ManagedBy,Value=Terraform" \
                   "Key=CreatedBy,Value=Terraform" \
-                --region ${{ env.AWS_REGION }}
-              echo "✅ Instance tagged successfully"
+                --region ${{ env.AWS_REGION }} 2>&1)
+              
+              if [ $? -eq 0 ]; then
+                echo "✅ Instance tagged successfully"
+                echo ""
+                echo "📋 Verifying tags were applied:"
+                aws ec2 describe-instances --instance-ids "$EXISTING_INSTANCE" \
+                  --query 'Reservations[0].Instances[0].Tags' \
+                  --output table --region ${{ env.AWS_REGION }}
+              else
+                echo "❌ ERROR: Failed to tag instance"
+                echo "Error output: $TAG_RESULT"
+                exit 1
+              fi
             else
               echo "✅ Instance already has correct tags"
             fi
