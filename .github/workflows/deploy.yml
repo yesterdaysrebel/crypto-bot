@@ -148,6 +148,47 @@ jobs:
         working-directory: ./infra/terraform
         run: terraform validate
 
+      - name: Import Existing Resources (if they exist)
+        working-directory: ./infra/terraform
+        continue-on-error: true
+        run: |
+          echo "Attempting to import existing resources..."
+          
+          # Get VPC ID (from default VPC or provided)
+          VPC_ID=$(aws ec2 describe-vpcs --filters "Name=is-default,Values=true" --query 'Vpcs[0].VpcId' --output text 2>/dev/null || echo "vpc-01194601ab9c678c4")
+          echo "Using VPC: $VPC_ID"
+          
+          # Import Security Group if it exists
+          SG_ID=$(aws ec2 describe-security-groups \
+            --filters "Name=group-name,Values=trading-bot-sg" "Name=vpc-id,Values=${VPC_ID}" \
+            --query 'SecurityGroups[0].GroupId' \
+            --output text 2>/dev/null || echo "")
+          
+          if [ -n "$SG_ID" ] && [ "$SG_ID" != "None" ]; then
+            echo "Importing Security Group: $SG_ID"
+            terraform import aws_security_group.trading_bot "$SG_ID" 2>&1 || echo "Security group may already be in state"
+          else
+            echo "Security Group not found, will be created"
+          fi
+          
+          # Import IAM Role if it exists
+          if aws iam get-role --role-name trading-bot-ec2-role &>/dev/null; then
+            echo "Importing IAM Role: trading-bot-ec2-role"
+            terraform import aws_iam_role.ec2_role trading-bot-ec2-role 2>&1 || echo "IAM role may already be in state"
+          else
+            echo "IAM Role not found, will be created"
+          fi
+          
+          # Import CloudWatch Log Group if it exists
+          if aws logs describe-log-groups --log-group-name-prefix "/aws/ec2/trading-bot" --query 'logGroups[?logGroupName==`/aws/ec2/trading-bot`]' --output text &>/dev/null; then
+            echo "Importing CloudWatch Log Group: /aws/ec2/trading-bot"
+            terraform import aws_cloudwatch_log_group.trading_bot /aws/ec2/trading-bot 2>&1 || echo "Log group may already be in state"
+          else
+            echo "CloudWatch Log Group not found, will be created"
+          fi
+          
+          echo "✅ Import step completed"
+
       - name: Create terraform.tfvars
         working-directory: ./infra/terraform
         run: |
@@ -322,6 +363,37 @@ jobs:
       - name: Terraform Init
         working-directory: ./infra/terraform
         run: terraform init
+
+      - name: Import Existing Resources (if they exist) - Staging
+        working-directory: ./infra/terraform
+        continue-on-error: true
+        run: |
+          echo "Attempting to import existing resources..."
+          
+          # Get VPC ID (from default VPC or provided)
+          VPC_ID=$(aws ec2 describe-vpcs --filters "Name=is-default,Values=true" --query 'Vpcs[0].VpcId' --output text 2>/dev/null || echo "vpc-01194601ab9c678c4")
+          echo "Using VPC: $VPC_ID"
+          
+          # Import Security Group if it exists
+          SG_ID=$(aws ec2 describe-security-groups \
+            --filters "Name=group-name,Values=trading-bot-sg" "Name=vpc-id,Values=${VPC_ID}" \
+            --query 'SecurityGroups[0].GroupId' \
+            --output text 2>/dev/null || echo "")
+          
+          if [ -n "$SG_ID" ] && [ "$SG_ID" != "None" ]; then
+            echo "Importing Security Group: $SG_ID"
+            terraform import aws_security_group.trading_bot "$SG_ID" 2>&1 || echo "Security group may already be in state"
+          fi
+          
+          # Import IAM Role if it exists
+          if aws iam get-role --role-name trading-bot-ec2-role &>/dev/null; then
+            terraform import aws_iam_role.ec2_role trading-bot-ec2-role 2>&1 || echo "IAM role may already be in state"
+          fi
+          
+          # Import CloudWatch Log Group if it exists
+          if aws logs describe-log-groups --log-group-name-prefix "/aws/ec2/trading-bot" --query 'logGroups[?logGroupName==`/aws/ec2/trading-bot`]' --output text &>/dev/null; then
+            terraform import aws_cloudwatch_log_group.trading_bot /aws/ec2/trading-bot 2>&1 || echo "Log group may already be in state"
+          fi
 
       - name: Create terraform.tfvars for staging
         working-directory: ./infra/terraform
