@@ -489,7 +489,13 @@ resource "aws_cloudwatch_metric_alarm" "instance_status" {
   treat_missing_data  = "notBreaching"
 
   dimensions = {
-    InstanceId = var.use_spot_instance ? aws_spot_instance_request.trading_bot[0].spot_instance_id : aws_instance.trading_bot[0].id
+    InstanceId = local.existing_instance_id != null ? local.existing_instance_id : (
+      var.use_spot_instance ? (
+        length(aws_spot_instance_request.trading_bot) > 0 ? aws_spot_instance_request.trading_bot[0].spot_instance_id : null
+      ) : (
+        length(aws_instance.trading_bot) > 0 ? aws_instance.trading_bot[0].id : null
+      )
+    )
   }
 
   tags = {
@@ -513,7 +519,13 @@ resource "aws_cloudwatch_metric_alarm" "cpu_utilization" {
   treat_missing_data  = "notBreaching"
 
   dimensions = {
-    InstanceId = var.use_spot_instance ? aws_spot_instance_request.trading_bot[0].spot_instance_id : aws_instance.trading_bot[0].id
+    InstanceId = local.existing_instance_id != null ? local.existing_instance_id : (
+      var.use_spot_instance ? (
+        length(aws_spot_instance_request.trading_bot) > 0 ? aws_spot_instance_request.trading_bot[0].spot_instance_id : null
+      ) : (
+        length(aws_instance.trading_bot) > 0 ? aws_instance.trading_bot[0].id : null
+      )
+    )
   }
 
   tags = {
@@ -538,7 +550,13 @@ resource "aws_cloudwatch_metric_alarm" "memory_utilization" {
   alarm_description   = "This metric monitors EC2 memory utilization"
 
   dimensions = {
-    InstanceId = var.use_spot_instance ? aws_spot_instance_request.trading_bot[0].spot_instance_id : aws_instance.trading_bot[0].id
+    InstanceId = local.existing_instance_id != null ? local.existing_instance_id : (
+      var.use_spot_instance ? (
+        length(aws_spot_instance_request.trading_bot) > 0 ? aws_spot_instance_request.trading_bot[0].spot_instance_id : null
+      ) : (
+        length(aws_instance.trading_bot) > 0 ? aws_instance.trading_bot[0].id : null
+      )
+    )
   }
 
   tags = {
