@@ -129,7 +129,8 @@ class TestDeltaExchangeClient:
         mock_session.return_value = mock_session_instance
         
         client = DeltaExchangeClient("test_key", "test_secret")
-        positions = client.get_positions()
+        # get_positions now requires at least one parameter (product_id or underlying_asset_symbol)
+        positions = client.get_positions(product_id=27)
         
         assert len(positions) == 1
         assert positions[0]['product_id'] == 27

@@ -159,32 +159,6 @@ jobs:
           ssh_key_name = "${{ secrets.AWS_SSH_KEY_NAME }}"
           EOF
 
-      - name: Import Existing Resources (if any)
-        working-directory: ./infra/terraform
-        run: |
-          # Import existing resources if they exist (ignore errors if they don't)
-          VPC_ID=$(aws ec2 describe-vpcs --filters "Name=is-default,Values=true" --query "Vpcs[0].VpcId" --output text --region ${{ env.AWS_REGION }} 2>/dev/null || echo "")
-          if [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ]; then
-            SG_ID=$(aws ec2 describe-security-groups --filters "Name=group-name,Values=trading-bot-sg" "Name=vpc-id,Values=${VPC_ID}" --query "SecurityGroups[0].GroupId" --output text --region ${{ env.AWS_REGION }} 2>/dev/null || echo "")
-            if [ -n "$SG_ID" ] && [ "$SG_ID" != "None" ] && [ "$SG_ID" != "null" ]; then
-              echo "Importing existing security group: ${SG_ID}"
-              terraform import aws_security_group.trading_bot ${SG_ID} || echo "Security group already in state or doesn't exist"
-            fi
-          fi
-          # Import IAM role if it exists
-          if aws iam get-role --role-name trading-bot-ec2-role --region ${{ env.AWS_REGION }} > /dev/null 2>&1; then
-            echo "Importing existing IAM role: trading-bot-ec2-role"
-            terraform import aws_iam_role.ec2_role trading-bot-ec2-role || echo "IAM role already in state"
-            terraform import aws_iam_role_policy.ec2_policy trading-bot-ec2-role:trading-bot-ec2-policy || echo "IAM role policy already in state"
-            terraform import aws_iam_instance_profile.ec2_profile trading-bot-ec2-profile || echo "IAM instance profile already in state"
-          fi
-          # Import CloudWatch log group if it exists
-          if aws logs describe-log-groups --log-group-name-prefix /aws/ec2/trading-bot --query "logGroups[?logGroupName=='/aws/ec2/trading-bot'].logGroupName" --output text --region ${{ env.AWS_REGION }} 2>/dev/null | grep -q "/aws/ec2/trading-bot"; then
-            echo "Importing existing CloudWatch log group"
-            terraform import aws_cloudwatch_log_group.trading_bot /aws/ec2/trading-bot || echo "CloudWatch log group already in state"
-          fi
-        continue-on-error: true
-
       - name: Terraform Plan
         working-directory: ./infra/terraform
         run: terraform plan -out=tfplan
@@ -359,32 +333,6 @@ jobs:
           spot_price = ""
           ssh_key_name = "${{ secrets.AWS_SSH_KEY_NAME }}"
           EOF
-
-      - name: Import Existing Resources (if any)
-        working-directory: ./infra/terraform
-        run: |
-          # Import existing resources if they exist (ignore errors if they don't)
-          VPC_ID=$(aws ec2 describe-vpcs --filters "Name=is-default,Values=true" --query "Vpcs[0].VpcId" --output text --region ${{ env.AWS_REGION }} 2>/dev/null || echo "")
-          if [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ]; then
-            SG_ID=$(aws ec2 describe-security-groups --filters "Name=group-name,Values=trading-bot-sg" "Name=vpc-id,Values=${VPC_ID}" --query "SecurityGroups[0].GroupId" --output text --region ${{ env.AWS_REGION }} 2>/dev/null || echo "")
-            if [ -n "$SG_ID" ] && [ "$SG_ID" != "None" ] && [ "$SG_ID" != "null" ]; then
-              echo "Importing existing security group: ${SG_ID}"
-              terraform import aws_security_group.trading_bot ${SG_ID} || echo "Security group already in state or doesn't exist"
-            fi
-          fi
-          # Import IAM role if it exists
-          if aws iam get-role --role-name trading-bot-ec2-role --region ${{ env.AWS_REGION }} > /dev/null 2>&1; then
-            echo "Importing existing IAM role: trading-bot-ec2-role"
-            terraform import aws_iam_role.ec2_role trading-bot-ec2-role || echo "IAM role already in state"
-            terraform import aws_iam_role_policy.ec2_policy trading-bot-ec2-role:trading-bot-ec2-policy || echo "IAM role policy already in state"
-            terraform import aws_iam_instance_profile.ec2_profile trading-bot-ec2-profile || echo "IAM instance profile already in state"
-          fi
-          # Import CloudWatch log group if it exists
-          if aws logs describe-log-groups --log-group-name-prefix /aws/ec2/trading-bot --query "logGroups[?logGroupName=='/aws/ec2/trading-bot'].logGroupName" --output text --region ${{ env.AWS_REGION }} 2>/dev/null | grep -q "/aws/ec2/trading-bot"; then
-            echo "Importing existing CloudWatch log group"
-            terraform import aws_cloudwatch_log_group.trading_bot /aws/ec2/trading-bot || echo "CloudWatch log group already in state"
-          fi
-        continue-on-error: true
 
       - name: Terraform Plan (Staging)
         working-directory: ./infra/terraform
