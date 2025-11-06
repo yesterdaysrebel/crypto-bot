@@ -128,8 +128,23 @@ jobs:
       - name: Verify SSH Key Exists
         run: |
           SSH_KEY_NAME="${{ secrets.AWS_SSH_KEY_NAME }}"
-          if [ -z "$SSH_KEY_NAME" ]; then
-            echo "❌ ERROR: AWS_SSH_KEY_NAME secret is not set!"
+          
+          if [ -z "$SSH_KEY_NAME" ] || [ "$SSH_KEY_NAME" = "" ]; then
+            echo "❌ ERROR: AWS_SSH_KEY_NAME secret is not set in GitHub Secrets!"
+            echo ""
+            echo "📋 Available key pairs in region ${{ env.AWS_REGION }}:"
+            echo "----------------------------------------"
+            aws ec2 describe-key-pairs --region ${{ env.AWS_REGION }} --query 'KeyPairs[*].KeyName' --output table 2>&1 || echo "Could not list key pairs (may need permissions)"
+            echo ""
+            echo "🔧 To fix this:"
+            echo "1. Go to GitHub Repository → Settings → Secrets and variables → Actions"
+            echo "2. Click 'New repository secret'"
+            echo "3. Name: AWS_SSH_KEY_NAME"
+            echo "4. Value: <your-aws-key-pair-name> (from the list above or create a new one)"
+            echo ""
+            echo "💡 To create a new key pair in AWS:"
+            echo "   - AWS Console → EC2 → Key Pairs → Create key pair"
+            echo "   - Or use: aws ec2 create-key-pair --key-name my-key --query 'KeyMaterial' --output text > my-key.pem"
             exit 1
           fi
           
@@ -139,12 +154,12 @@ jobs:
           else
             echo "❌ ERROR: SSH key pair '$SSH_KEY_NAME' does NOT exist in region ${{ env.AWS_REGION }}"
             echo ""
-            echo "Available key pairs:"
+            echo "📋 Available key pairs in this region:"
             aws ec2 describe-key-pairs --region ${{ env.AWS_REGION }} --query 'KeyPairs[*].KeyName' --output table || echo "Could not list key pairs"
             echo ""
             echo "Please either:"
             echo "1. Create the key pair in AWS Console: EC2 → Key Pairs → Create key pair"
-            echo "2. Update the AWS_SSH_KEY_NAME secret to match an existing key pair name"
+            echo "2. Update the AWS_SSH_KEY_NAME secret in GitHub to match an existing key pair name from the list above"
             exit 1
           fi
 
@@ -474,8 +489,19 @@ jobs:
       - name: Verify SSH Key Exists (Staging)
         run: |
           SSH_KEY_NAME="${{ secrets.AWS_SSH_KEY_NAME }}"
-          if [ -z "$SSH_KEY_NAME" ]; then
-            echo "❌ ERROR: AWS_SSH_KEY_NAME secret is not set!"
+          
+          if [ -z "$SSH_KEY_NAME" ] || [ "$SSH_KEY_NAME" = "" ]; then
+            echo "❌ ERROR: AWS_SSH_KEY_NAME secret is not set in GitHub Secrets!"
+            echo ""
+            echo "📋 Available key pairs in region ${{ env.AWS_REGION }}:"
+            echo "----------------------------------------"
+            aws ec2 describe-key-pairs --region ${{ env.AWS_REGION }} --query 'KeyPairs[*].KeyName' --output table 2>&1 || echo "Could not list key pairs (may need permissions)"
+            echo ""
+            echo "🔧 To fix this:"
+            echo "1. Go to GitHub Repository → Settings → Secrets and variables → Actions"
+            echo "2. Click 'New repository secret'"
+            echo "3. Name: AWS_SSH_KEY_NAME"
+            echo "4. Value: <your-aws-key-pair-name> (from the list above or create a new one)"
             exit 1
           fi
           
@@ -485,7 +511,7 @@ jobs:
           else
             echo "❌ ERROR: SSH key pair '$SSH_KEY_NAME' does NOT exist in region ${{ env.AWS_REGION }}"
             echo ""
-            echo "Available key pairs:"
+            echo "📋 Available key pairs in this region:"
             aws ec2 describe-key-pairs --region ${{ env.AWS_REGION }} --query 'KeyPairs[*].KeyName' --output table || echo "Could not list key pairs"
             exit 1
           fi
