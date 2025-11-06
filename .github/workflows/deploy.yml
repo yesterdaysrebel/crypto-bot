@@ -407,14 +407,72 @@ jobs:
             sudo tar -xzf /tmp/trading-bot.tar.gz -C /opt/trading-bot/
             sudo chown -R ec2-user:ec2-user /opt/trading-bot
             
+            echo "Installing Python 3.9 if not available..."
+            if ! command -v python3.9 &> /dev/null; then
+              echo "Python 3.9 not found, installing..."
+              sudo yum update -y
+              
+              # Check if we're on Amazon Linux 2
+              if [ -f /etc/system-release ]; then
+                AMAZON_LINUX_VERSION=$(cat /etc/system-release)
+                echo "Detected: $AMAZON_LINUX_VERSION"
+                
+                if echo "$AMAZON_LINUX_VERSION" | grep -q "Amazon Linux 2"; then
+                  echo "Installing Python 3.9 from Amazon Linux Extras..."
+                  sudo amazon-linux-extras enable python3.9
+                  sudo yum clean metadata
+                  sudo yum install -y python3.9 python3.9-pip python3.9-devel gcc || {
+                    echo "Amazon Linux Extras failed, trying EPEL..."
+                    sudo yum install -y epel-release
+                    sudo yum install -y python39 python39-pip python39-devel gcc || {
+                      echo "⚠️  Failed to install Python 3.9 via package manager"
+                      echo "Will attempt to use existing Python 3 and adjust requirements if needed"
+                    }
+                  }
+                else
+                  # For Amazon Linux 2023 or other versions
+                  echo "Installing Python 3.9 from default repositories..."
+                  sudo yum install -y python3.9 python3.9-pip python3.9-devel gcc || {
+                    sudo yum install -y python39 python39-pip python39-devel gcc || {
+                      echo "⚠️  Python 3.9 not available, will use system Python"
+                    }
+                  }
+                fi
+              fi
+            fi
+            
             echo "Checking Python version..."
-            PYTHON_CMD=$(which python3.9 || which python3 || echo "python3")
-            echo "Using Python: $PYTHON_CMD"
+            # Try multiple possible locations for Python 3.9
+            if command -v python3.9 &> /dev/null; then
+              PYTHON_CMD=python3.9
+            elif command -v /usr/bin/python3.9 &> /dev/null; then
+              PYTHON_CMD=/usr/bin/python3.9
+            elif command -v /usr/local/bin/python3.9 &> /dev/null; then
+              PYTHON_CMD=/usr/local/bin/python3.9
+            else
+              PYTHON_CMD=$(which python3 || echo "python3")
+            fi
+            
+            PYTHON_VERSION=$($PYTHON_CMD --version 2>&1 || echo "unknown")
+            echo "Using Python: $PYTHON_CMD ($PYTHON_VERSION)"
+            
+            # Verify Python version is 3.8 or higher
+            PYTHON_MAJOR=$($PYTHON_CMD -c "import sys; print(sys.version_info.major)" 2>/dev/null || echo "0")
+            PYTHON_MINOR=$($PYTHON_CMD -c "import sys; print(sys.version_info.minor)" 2>/dev/null || echo "0")
+            
+            if [ "$PYTHON_MAJOR" -lt 3 ] || ([ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -lt 8 ]); then
+              echo "❌ ERROR: Python version is $PYTHON_MAJOR.$PYTHON_MINOR, but pandas>=2.0.0 requires Python 3.8+"
+              echo "Please ensure Python 3.9 is installed in user_data.sh or update the AMI to Amazon Linux 2023"
+              exit 1
+            fi
             
             # Create virtual environment if it doesn't exist
             if [ ! -d "venv" ]; then
-              echo "Creating virtual environment..."
-              $PYTHON_CMD -m venv venv
+              echo "Creating virtual environment with $PYTHON_CMD..."
+              $PYTHON_CMD -m venv venv || {
+                echo "Failed to create venv with $PYTHON_CMD, trying python3..."
+                python3 -m venv venv
+              }
             fi
             
             echo "Activating virtual environment and installing dependencies..."

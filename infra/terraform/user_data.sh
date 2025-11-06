@@ -5,7 +5,15 @@
 yum update -y
 
 # Install Python 3.9 and pip
-yum install -y python3.9 python3-pip git
+# On Amazon Linux 2, Python 3.9 is available via Amazon Linux Extras
+if command -v amazon-linux-extras &> /dev/null; then
+  amazon-linux-extras enable python3.9
+  yum clean metadata
+  yum install -y python3.9 python3.9-pip git
+else
+  # For Amazon Linux 2023 or other distributions
+  yum install -y python3.9 python3.9-pip git || yum install -y python39 python39-pip git
+fi
 
 # Install CloudWatch agent
 yum install -y amazon-cloudwatch-agent
