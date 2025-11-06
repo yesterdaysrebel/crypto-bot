@@ -192,6 +192,17 @@ jobs:
             echo "✅ Found IAM Role: trading-bot-ec2-role"
             echo "📥 Importing IAM Role..."
             terraform import -var-file=terraform.tfvars aws_iam_role.ec2_role trading-bot-ec2-role || echo "⚠️  IAM Role import failed (may already be in state)"
+            
+            # Import IAM Instance Profile if it exists (depends on IAM Role)
+            echo ""
+            echo "👤 Checking IAM Instance Profile..."
+            if aws iam get-instance-profile --instance-profile-name trading-bot-ec2-profile &>/dev/null; then
+              echo "✅ Found IAM Instance Profile: trading-bot-ec2-profile"
+              echo "📥 Importing IAM Instance Profile..."
+              terraform import -var-file=terraform.tfvars aws_iam_instance_profile.ec2_profile trading-bot-ec2-profile || echo "⚠️  IAM Instance Profile import failed (may already be in state)"
+            else
+              echo "ℹ️  IAM Instance Profile not found, will be created"
+            fi
           else
             echo "ℹ️  IAM Role not found, will be created"
           fi
@@ -232,6 +243,11 @@ jobs:
             echo "✅ IAM Role is in state"
           else
             echo "⚠️  IAM Role NOT in state - will be created"
+          fi
+          if terraform state show aws_iam_instance_profile.ec2_profile &>/dev/null; then
+            echo "✅ IAM Instance Profile is in state"
+          else
+            echo "⚠️  IAM Instance Profile NOT in state - will be created"
           fi
           if terraform state show aws_cloudwatch_log_group.trading_bot &>/dev/null; then
             echo "✅ CloudWatch Log Group is in state"
@@ -447,6 +463,17 @@ jobs:
             echo "✅ Found IAM Role: trading-bot-ec2-role"
             echo "📥 Importing IAM Role..."
             terraform import -var-file=terraform.tfvars aws_iam_role.ec2_role trading-bot-ec2-role || echo "⚠️  IAM Role import failed (may already be in state)"
+            
+            # Import IAM Instance Profile if it exists (depends on IAM Role)
+            echo ""
+            echo "👤 Checking IAM Instance Profile..."
+            if aws iam get-instance-profile --instance-profile-name trading-bot-ec2-profile &>/dev/null; then
+              echo "✅ Found IAM Instance Profile: trading-bot-ec2-profile"
+              echo "📥 Importing IAM Instance Profile..."
+              terraform import -var-file=terraform.tfvars aws_iam_instance_profile.ec2_profile trading-bot-ec2-profile || echo "⚠️  IAM Instance Profile import failed (may already be in state)"
+            else
+              echo "ℹ️  IAM Instance Profile not found, will be created"
+            fi
           else
             echo "ℹ️  IAM Role not found, will be created"
           fi
