@@ -229,17 +229,21 @@ class TradingBot:
     def train_ml_models(self):
         """Train ML models on historical data."""
         try:
+            logger.info("=" * 60)
             logger.info("Training ML models...")
+            logger.info("=" * 60)
+            
             predictor = None
             
             # Find ML predictor from strategies
             for strategy in self.strategies:
                 if isinstance(strategy, MLStrategy):
                     predictor = strategy.predictor
+                    logger.info(f"Found ML predictor in strategy: {strategy.name}")
                     break
             
             if predictor is None:
-                logger.warning("No ML predictor found")
+                logger.warning("No ML predictor found in strategies. Cannot train model.")
                 return
             
             # Collect data for training
@@ -247,53 +251,92 @@ class TradingBot:
             all_features = []
             all_labels = []
             
+            logger.info(f"Collecting training data for {len(self.config.trading.products)} products...")
+            
             for symbol in self.config.trading.products:
+                logger.info(f"  Processing {symbol}...")
+                
                 # Try to load existing historical data first
                 ohlc_df = self.data_collector.load_historical_data(
                     symbol=symbol,
                     resolution=self.config.trading.default_timeframe
                 )
                 
+                logger.info(f"    Loaded {len(ohlc_df)} candles from disk")
+                
                 # If not enough data, collect from API
                 if ohlc_df.empty or len(ohlc_df) < 50:
+                    logger.info(f"    Not enough data ({len(ohlc_df)} candles), collecting from API...")
                     ohlc_df = self.data_collector.collect_ohlc(
                         symbol=symbol,
                         resolution=self.config.trading.default_timeframe,
                         hours=168,  # 7 days
                         save=True  # Save for future use
                     )
+                    logger.info(f"    Collected {len(ohlc_df)} candles from API")
                 
                 if not ohlc_df.empty and len(ohlc_df) > 50:
+                    logger.info(f"    Preparing features and labels...")
                     features = feature_engineer.prepare_features(ohlc_df)
                     labels = feature_engineer.create_labels(ohlc_df)
+                    
+                    logger.info(f"    Features shape: {features.shape}, Labels shape: {labels.shape}")
                     
                     # Align indices
                     common_idx = features.index.intersection(labels.index)
                     features = features.loc[common_idx]
                     labels = labels.loc[common_idx]
                     
-                    all_features.append(features)
-                    all_labels.append(labels)
+                    logger.info(f"    After alignment: {len(features)} samples")
+                    
+                    if len(features) > 10:  # Minimum samples needed
+                        all_features.append(features)
+                        all_labels.append(labels)
+                        logger.info(f"    ✓ Added {len(features)} samples for training")
+                    else:
+                        logger.warning(f"    ✗ Not enough aligned samples ({len(features)})")
+                else:
+                    logger.warning(f"    ✗ Insufficient data: {len(ohlc_df)} candles (need >50)")
             
             if all_features:
                 import pandas as pd
+                logger.info(f"Combining data from {len(all_features)} products...")
                 X = pd.concat(all_features)
                 y = pd.concat(all_labels)
                 
+                logger.info(f"Total training data: {len(X)} samples")
+                logger.info(f"Feature columns: {list(X.columns)}")
+                logger.info(f"Label distribution: {y.value_counts().to_dict()}")
+                
                 # Train model with timeframe-specific name
+                logger.info("Starting model training...")
                 metrics = predictor.train(X, y, retrain=True)
                 
-                # Save model with timeframe in name
-                timeframe = self.config.trading.default_timeframe
-                model_name = f"model_{timeframe}"
-                predictor.save_model(name=model_name)
-                
-                logger.info(f"ML model training completed for timeframe {timeframe}: {metrics}")
+                if metrics and "error" not in metrics:
+                    # Save model with timeframe in name
+                    timeframe = self.config.trading.default_timeframe
+                    model_name = f"model_{timeframe}"
+                    predictor.save_model(name=model_name)
+                    
+                    logger.info("=" * 60)
+                    logger.info(f"✓ ML model training completed for timeframe {timeframe}")
+                    logger.info(f"  Train accuracy: {metrics.get('train_accuracy', 0):.4f}")
+                    logger.info(f"  Test accuracy: {metrics.get('test_accuracy', 0):.4f}")
+                    logger.info(f"  Model saved as: {model_name}")
+                    logger.info("=" * 60)
+                else:
+                    logger.error(f"✗ Model training failed: {metrics}")
             else:
-                logger.warning("Insufficient data for training")
+                logger.error("=" * 60)
+                logger.error("✗ Insufficient data for training")
+                logger.error("  Need at least 50 candles per product with aligned features/labels")
+                logger.error("  Try collecting more historical data first")
+                logger.error("=" * 60)
         
         except Exception as e:
-            logger.error(f"Error training ML models: {e}")
+            logger.error("=" * 60)
+            logger.error(f"✗ Error training ML models: {e}", exc_info=True)
+            logger.error("=" * 60)
     
     def run_strategy(self, strategy: BaseStrategy, symbol: str):
         """Run a single strategy for a symbol."""
@@ -467,9 +510,19 @@ class TradingBot:
             logger.error("=" * 60)
             return
         
-        # Train ML models on first run
-        logger.info("Step 3: Training ML models...")
-        self.train_ml_models()
+        # Train ML models on first run (only if ML is enabled)
+        ml_strategy = next((s for s in self.strategies if isinstance(s, MLStrategy)), None)
+        if ml_strategy:
+            logger.info("Step 3: Training ML models...")
+            # Check if model already exists and is trained
+            timeframe = self.config.trading.default_timeframe
+            if ml_strategy.predictor.is_trained:
+                logger.info(f"  ML model already trained for timeframe {timeframe}")
+            else:
+                logger.info(f"  ML model not trained, starting training...")
+                self.train_ml_models()
+        else:
+            logger.info("Step 3: Skipping ML model training (no ML strategies)")
         
         self.running = True
         cycle_interval = 60  # Run every 60 seconds
