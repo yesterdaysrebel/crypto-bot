@@ -24,6 +24,17 @@ variable "spot_price" {
   default     = ""
 }
 
+variable "spot_type" {
+  description = "Spot instance type: 'one-time' (terminated when interrupted) or 'persistent' (auto-restarts when interrupted)"
+  type        = string
+  default     = "one-time"
+  
+  validation {
+    condition     = contains(["one-time", "persistent"], var.spot_type)
+    error_message = "spot_type must be either 'one-time' or 'persistent'."
+  }
+}
+
 variable "ssh_key_name" {
   description = "AWS SSH key pair name (required)"
   type        = string

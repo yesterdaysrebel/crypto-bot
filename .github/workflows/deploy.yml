@@ -191,9 +191,10 @@ jobs:
         run: |
           cat > terraform.tfvars <<EOF
           aws_region = "${{ env.AWS_REGION }}"
-          instance_type = "${{ secrets.AWS_INSTANCE_TYPE || 't3.micro' }}"
-          use_spot_instance = true
-          spot_price = ""
+          instance_type = "${{ secrets.AWS_INSTANCE_TYPE || 't4g.micro' }}"
+          use_spot_instance = ${{ secrets.AWS_USE_SPOT_INSTANCE || 'true' }}
+          spot_price = "${{ secrets.AWS_SPOT_PRICE || '' }}"
+          spot_type = "${{ secrets.AWS_SPOT_TYPE || 'persistent' }}"
           ssh_key_name = "${{ secrets.AWS_SSH_KEY_NAME }}"
           EOF
 
@@ -805,8 +806,9 @@ jobs:
         run: |
           cat > terraform.tfvars <<EOF
           aws_region = "${{ env.AWS_REGION }}"
-          instance_type = "t3.micro"
-          use_spot_instance = true
+          instance_type = "${{ secrets.AWS_INSTANCE_TYPE || 't4g.micro' }}"
+          use_spot_instance = ${{ secrets.AWS_USE_SPOT_INSTANCE || 'true' }}
+          spot_type = "${{ secrets.AWS_SPOT_TYPE || 'persistent' }}"
           spot_price = ""
           ssh_key_name = "${{ secrets.AWS_SSH_KEY_NAME }}"
           EOF

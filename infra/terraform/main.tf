@@ -18,7 +18,19 @@ provider "aws" {
 # Data sources
 # Use Amazon Linux 2023 which includes Python 3.9+ by default
 # Fallback to Amazon Linux 2 if AL2023 is not available
-data "aws_ami" "amazon_linux_2023" {
+# Support both x86_64 and ARM64 (for t4g instances)
+
+# Detect architecture from instance type
+# Check if instance type is ARM-based (t4g, m6g, etc.)
+locals {
+  is_arm_instance = can(regex("^t4g\\.|^m6g\\.|^c6g\\.|^r6g\\.", var.instance_type))
+  architecture    = local.is_arm_instance ? "arm64" : "x86_64"
+}
+
+# Amazon Linux 2023 - x86_64
+data "aws_ami" "amazon_linux_2023_x86" {
+  count = local.is_arm_instance ? 0 : 1
+
   most_recent = true
   owners      = ["amazon"]
 
@@ -33,13 +45,52 @@ data "aws_ami" "amazon_linux_2023" {
   }
 }
 
-data "aws_ami" "amazon_linux_2" {
+# Amazon Linux 2023 - ARM64
+data "aws_ami" "amazon_linux_2023_arm" {
+  count = local.is_arm_instance ? 1 : 0
+
+  most_recent = true
+  owners      = ["amazon"]
+
+  filter {
+    name   = "name"
+    values = ["al2023-ami-*-arm64"]
+  }
+
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
+}
+
+# Amazon Linux 2 - x86_64 (fallback)
+data "aws_ami" "amazon_linux_2_x86" {
+  count = local.is_arm_instance ? 0 : 1
+
   most_recent = true
   owners      = ["amazon"]
 
   filter {
     name   = "name"
     values = ["amzn2-ami-hvm-*-x86_64-gp2"]
+  }
+
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
+}
+
+# Amazon Linux 2 - ARM64 (fallback)
+data "aws_ami" "amazon_linux_2_arm" {
+  count = local.is_arm_instance ? 1 : 0
+
+  most_recent = true
+  owners      = ["amazon"]
+
+  filter {
+    name   = "name"
+    values = ["amzn2-ami-hvm-*-arm64-gp2"]
   }
 
   filter {
@@ -88,8 +139,13 @@ data "aws_instance" "existing" {
 }
 
 # Use AL2023 if available, otherwise fallback to AL2
+# Support both x86_64 and ARM64 architectures
 locals {
-  ami_id = try(data.aws_ami.amazon_linux_2023.id, data.aws_ami.amazon_linux_2.id)
+  ami_id = local.is_arm_instance ? (
+    try(data.aws_ami.amazon_linux_2023_arm[0].id, data.aws_ami.amazon_linux_2_arm[0].id)
+  ) : (
+    try(data.aws_ami.amazon_linux_2023_x86[0].id, data.aws_ami.amazon_linux_2_x86[0].id)
+  )
   
   # Get existing instance ID if it exists
   existing_instance_id = length(local.existing_instance_ids) > 0 ? local.existing_instance_ids[0] : null
@@ -413,7 +469,7 @@ resource "aws_spot_instance_request" "trading_bot" {
   ami           = local.ami_id
   instance_type = var.instance_type
   spot_price           = var.spot_price != "" ? var.spot_price : null
-  spot_type            = "one-time"
+  spot_type            = var.spot_type
   wait_for_fulfillment = true
 
   # Network configuration
