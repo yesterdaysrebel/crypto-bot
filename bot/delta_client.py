@@ -29,25 +29,52 @@ class DeltaApi:
         payload = response.json()
         return payload.get("result", payload)
 
-    def _normalize_resolution(self, resolution):
-        if isinstance(resolution, (int, float)):
-            return int(resolution)
+    def _resolution_candidates(self, resolution):
+        candidates = []
         if isinstance(resolution, str):
             value = resolution.strip().lower()
-            if value.endswith("m") and value[:-1].isdigit():
-                return int(value[:-1])
-            if value.endswith("h") and value[:-1].isdigit():
-                return int(value[:-1]) * 60
-            if value.endswith("d") and value[:-1].isdigit():
-                return int(value[:-1]) * 1440
-            if value.isdigit():
-                return int(value)
-        return resolution
+            if value.endswith(("m", "h", "d")) and value[:-1].isdigit():
+                factor = {"m": 1, "h": 60, "d": 1440}[value[-1]]
+                minutes = int(value[:-1]) * factor
+                seconds = minutes * 60
+                candidates.extend(
+                    [
+                        {"value": value, "seconds": seconds},
+                        {"value": minutes, "seconds": seconds},
+                        {"value": minutes * 60, "seconds": seconds},
+                    ]
+                )
+            elif value.isdigit():
+                candidates.extend(self._numeric_resolution_candidates(int(value)))
+        elif isinstance(resolution, (int, float)):
+            candidates.extend(self._numeric_resolution_candidates(int(resolution)))
+        else:
+            candidates.append({"value": resolution, "seconds": None})
+
+        seen = set()
+        ordered = []
+        for item in candidates:
+            key = (item["value"], item["seconds"])
+            if key not in seen:
+                seen.add(key)
+                ordered.append(item)
+        return ordered
+
+    def _numeric_resolution_candidates(self, value):
+        if value <= 0:
+            return [{"value": value, "seconds": None}]
+        seconds = value
+        minutes_as_seconds = value * 60
+        return [
+            {"value": value, "seconds": minutes_as_seconds},
+            {"value": value, "seconds": seconds},
+            {"value": minutes_as_seconds, "seconds": minutes_as_seconds},
+        ]
 
     def _fetch_candles(self, symbol, resolution, limit):
         base_url = BASE_URL.rstrip("/") + "/"
         candles_url = urljoin(base_url, "v2/history/candles")
-        normalized_resolution = self._normalize_resolution(resolution)
+        resolution_candidates = self._resolution_candidates(resolution)
         limit_value = int(limit)
         product_id = None
         try:
@@ -55,26 +82,19 @@ class DeltaApi:
         except Exception:
             product_id = None
 
-        resolution_candidates = [normalized_resolution]
-        if isinstance(normalized_resolution, int) and normalized_resolution > 0:
-            if normalized_resolution < 60:
-                resolution_candidates.append(normalized_resolution * 60)
-
         end_ts = int(time.time())
         candidate_params = []
-        for res_value in resolution_candidates:
+        for candidate in resolution_candidates:
+            res_value = candidate["value"]
+            step_seconds = candidate["seconds"]
             base_params = {"resolution": res_value}
             if symbol:
                 candidate_params.append({**base_params, "symbol": symbol, "limit": limit_value})
             if product_id:
                 candidate_params.append({**base_params, "product_id": product_id, "limit": limit_value})
 
-            seconds_per_step_options = {res_value}
-            if isinstance(res_value, int) and res_value > 0:
-                seconds_per_step_options.add(res_value * 60)
-
-            for seconds_per_step in seconds_per_step_options:
-                start_ts = end_ts - (limit_value * seconds_per_step)
+            if step_seconds:
+                start_ts = end_ts - (limit_value * step_seconds)
                 if symbol:
                     candidate_params.append(
                         {**base_params, "symbol": symbol, "start": start_ts, "end": end_ts}
