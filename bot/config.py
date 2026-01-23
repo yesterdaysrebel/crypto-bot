@@ -41,6 +41,7 @@ TAKE_PROFIT_ENABLED = os.getenv("TAKE_PROFIT_ENABLED", "true").lower() == "true"
 
 MIN_QTY = _get_float("MIN_QTY", 0.1)
 QTY_STEP = _get_float("QTY_STEP", 0.1)
+FIXED_QTY = _get_float("FIXED_QTY", 0.0)
 
 TIMEFRAME = os.getenv("TIMEFRAME", "1m")
 CANDLE_LIMIT = _get_int("CANDLE_LIMIT", 200)

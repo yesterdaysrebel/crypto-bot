@@ -22,6 +22,7 @@ from bot.config import (
     TIME_IN_FORCE,
     POST_ONLY,
     QTY_STEP,
+    FIXED_QTY,
 )
 from bot.delta_client import DeltaApi
 from bot.journal import TradeJournal
@@ -142,6 +143,7 @@ class TradingBot:
             min_qty=MIN_QTY,
             qty_step=QTY_STEP,
             risk_per_trade=RISK_PER_TRADE,
+            fixed_qty=FIXED_QTY,
             max_notional=(DAILY_CAPITAL * LEVERAGE) if DAILY_CAPITAL and LEVERAGE else None,
         )
         if size <= 0:

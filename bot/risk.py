@@ -21,8 +21,11 @@ def position_size(
     min_qty,
     qty_step,
     risk_per_trade,
+    fixed_qty=0.0,
     max_notional=None,
 ):
+    if fixed_qty and fixed_qty > 0:
+        return round_step(fixed_qty, qty_step)
     stop_dist = abs(entry - stop)
     if stop_dist <= 0:
         return 0.0
