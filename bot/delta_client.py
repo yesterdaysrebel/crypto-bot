@@ -29,6 +29,88 @@ class DeltaApi:
         payload = response.json()
         return payload.get("result", payload)
 
+    def _extract_ticker(self, data, symbol=None, product_id=None):
+        if isinstance(data, dict) and "result" in data:
+            data = data["result"]
+        if isinstance(data, list):
+            if symbol:
+                for item in data:
+                    if str(item.get("symbol", "")).upper() == str(symbol).upper():
+                        return item
+            if product_id:
+                for item in data:
+                    if str(item.get("product_id", "")) == str(product_id):
+                        return item
+            return data[0] if data else None
+        if isinstance(data, dict):
+            return data
+        return None
+
+    def _fetch_ticker(self, symbol, product_id=None):
+        base_url = BASE_URL.rstrip("/") + "/"
+        endpoints = [
+            (urljoin(base_url, f"v2/tickers/{symbol}"), None),
+            (urljoin(base_url, "v2/tickers"), {"symbol": symbol}),
+        ]
+        if product_id:
+            endpoints.append((urljoin(base_url, "v2/tickers"), {"product_id": product_id}))
+
+        last_response = None
+        for url, params in endpoints:
+            response = requests.get(url, params=params, timeout=10)
+            if response.ok:
+                payload = response.json()
+                ticker = self._extract_ticker(payload, symbol=symbol, product_id=product_id)
+                if ticker:
+                    return ticker
+            last_response = response
+
+        if last_response is not None:
+            last_response.raise_for_status()
+        raise RuntimeError("Delta ticker request failed without a response")
+
+    def get_ticker(self, symbol, product_id=None):
+        try:
+            if hasattr(self.client, "get_ticker"):
+                try:
+                    response = self.client.get_ticker(symbol)
+                except TypeError:
+                    response = self.client.get_ticker(symbol=symbol)
+                ticker = self._extract_ticker(response, symbol=symbol, product_id=product_id)
+                if ticker:
+                    return ticker
+        except Exception:
+            pass
+        return self._fetch_ticker(symbol, product_id=product_id)
+
+    def get_price(self, symbol, source="mark", product_id=None):
+        ticker = self.get_ticker(symbol, product_id=product_id)
+        if not isinstance(ticker, dict):
+            raise RuntimeError("Ticker response missing data")
+
+        source = (source or "mark").lower()
+        if source == "mark":
+            keys = ["mark_price", "mark"]
+        elif source == "last":
+            keys = ["last_price", "last"]
+        elif source == "index":
+            keys = ["index_price", "spot_price", "spot"]
+        else:
+            keys = [source]
+
+        for key in keys:
+            value = ticker.get(key)
+            if value is not None:
+                return float(value)
+
+        # Fallback to last price if specific source is missing
+        for key in ["last_price", "last", "close"]:
+            value = ticker.get(key)
+            if value is not None:
+                return float(value)
+
+        raise RuntimeError(f"Ticker does not include {source} price")
+
     def _resolution_candidates(self, resolution):
         candidates = []
         if isinstance(resolution, str):

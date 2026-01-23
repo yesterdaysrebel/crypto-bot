@@ -23,6 +23,7 @@ from bot.config import (
     POST_ONLY,
     QTY_STEP,
     FIXED_QTY,
+    PRICE_SOURCE,
 )
 from bot.delta_client import DeltaApi
 from bot.journal import TradeJournal
@@ -132,7 +133,13 @@ class TradingBot:
 
         raw_candles = self.api.get_candles(SYMBOL, TIMEFRAME, CANDLE_LIMIT)
         candles = normalize_candles(raw_candles)
-        signal = generate_signal(candles)
+        price_override = None
+        if PRICE_SOURCE and PRICE_SOURCE != "candle":
+            try:
+                price_override = self.api.get_price(SYMBOL, PRICE_SOURCE, product_id=self.product_id)
+            except Exception as exc:
+                self.logger.warning("Price source %s unavailable, using candle close: %s", PRICE_SOURCE, exc)
+        signal = generate_signal(candles, price_override=price_override)
         if not signal:
             return
 
