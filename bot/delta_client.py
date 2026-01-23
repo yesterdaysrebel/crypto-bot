@@ -1,4 +1,5 @@
 from urllib.parse import urljoin
+import time
 
 import requests
 from delta_rest_client import DeltaRestClient
@@ -28,14 +29,43 @@ class DeltaApi:
         payload = response.json()
         return payload.get("result", payload)
 
+    def _normalize_resolution(self, resolution):
+        if isinstance(resolution, (int, float)):
+            return int(resolution)
+        if isinstance(resolution, str):
+            value = resolution.strip().lower()
+            if value.endswith("m") and value[:-1].isdigit():
+                return int(value[:-1])
+            if value.endswith("h") and value[:-1].isdigit():
+                return int(value[:-1]) * 60
+            if value.endswith("d") and value[:-1].isdigit():
+                return int(value[:-1]) * 1440
+            if value.isdigit():
+                return int(value)
+        return resolution
+
     def _fetch_candles(self, symbol, resolution, limit):
         base_url = BASE_URL.rstrip("/") + "/"
         candles_url = urljoin(base_url, "v2/history/candles")
+        normalized_resolution = self._normalize_resolution(resolution)
         response = requests.get(
             candles_url,
-            params={"symbol": symbol, "resolution": resolution, "limit": limit},
+            params={"symbol": symbol, "resolution": normalized_resolution, "limit": limit},
             timeout=10,
         )
+        if response.status_code == 400:
+            end_ts = int(time.time())
+            start_ts = end_ts - (int(limit) * int(normalized_resolution) * 60)
+            response = requests.get(
+                candles_url,
+                params={
+                    "symbol": symbol,
+                    "resolution": normalized_resolution,
+                    "start": start_ts,
+                    "end": end_ts,
+                },
+                timeout=10,
+            )
         response.raise_for_status()
         payload = response.json()
         result = payload.get("result", payload)
