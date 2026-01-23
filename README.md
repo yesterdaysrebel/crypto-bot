@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Delta Exchange SOL Scalping Bot
 
 This is a minimal, risk-managed trading bot scaffold built around Delta Exchange's
@@ -61,3 +62,6 @@ and restart the service.
 - This scaffold assumes the Delta REST client methods are available in your
   installed version. If any method names differ, adjust `bot/delta_client.py`.
 - Use testnet first and verify orders before trading live.
+=======
+# crypto-bot
+>>>>>>> 78f135f (Initial commit)
