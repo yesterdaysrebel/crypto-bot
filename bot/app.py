@@ -57,13 +57,6 @@ class TradingBot:
         size = float(position.get("size", 0)) if isinstance(position, dict) else 0.0
         return abs(size) > 0
 
-    def _has_open_orders(self):
-        response = self.api.get_active_orders(self.product_id)
-        orders = response.get("result", response)
-        if isinstance(orders, dict):
-            orders = orders.get("orders", [])
-        return bool(orders)
-
     def _place_bracket(self, signal, size):
         entry_type = self.api.order_type_value(ENTRY_ORDER_TYPE)
         tif_value = self.api.tif_value(TIME_IN_FORCE)
@@ -135,8 +128,6 @@ class TradingBot:
             return
 
         if self._has_position():
-            return
-        if self._has_open_orders():
             return
 
         raw_candles = self.api.get_candles(SYMBOL, TIMEFRAME, CANDLE_LIMIT)
