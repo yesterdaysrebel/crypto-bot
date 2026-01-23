@@ -176,6 +176,16 @@ class DeltaApi:
     def get_position(self, product_id):
         return self.client.get_position(product_id)
 
+    def get_active_orders(self, product_id):
+        if hasattr(self.client, "get_active_orders"):
+            return self.client.get_active_orders(product_id=product_id)
+        if hasattr(self.client, "get_orders"):
+            try:
+                return self.client.get_orders(status="open", product_id=product_id)
+            except TypeError:
+                return self.client.get_orders("open")
+        raise RuntimeError("Delta client missing get_active_orders() method")
+
     def get_balances(self, asset_id):
         return self.client.get_balances(asset_id)
 
