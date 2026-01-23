@@ -48,30 +48,72 @@ class DeltaApi:
         base_url = BASE_URL.rstrip("/") + "/"
         candles_url = urljoin(base_url, "v2/history/candles")
         normalized_resolution = self._normalize_resolution(resolution)
-        response = requests.get(
-            candles_url,
-            params={"symbol": symbol, "resolution": normalized_resolution, "limit": limit},
-            timeout=10,
-        )
-        if response.status_code == 400:
-            end_ts = int(time.time())
-            start_ts = end_ts - (int(limit) * int(normalized_resolution) * 60)
-            response = requests.get(
-                candles_url,
-                params={
-                    "symbol": symbol,
-                    "resolution": normalized_resolution,
-                    "start": start_ts,
-                    "end": end_ts,
-                },
-                timeout=10,
-            )
-        response.raise_for_status()
-        payload = response.json()
-        result = payload.get("result", payload)
-        if isinstance(result, dict) and "candles" in result:
-            return result["candles"]
-        return result
+        limit_value = int(limit)
+        product_id = None
+        try:
+            product_id = self.resolve_product_id(symbol)
+        except Exception:
+            product_id = None
+
+        resolution_candidates = [normalized_resolution]
+        if isinstance(normalized_resolution, int) and normalized_resolution > 0:
+            if normalized_resolution < 60:
+                resolution_candidates.append(normalized_resolution * 60)
+
+        end_ts = int(time.time())
+        candidate_params = []
+        for res_value in resolution_candidates:
+            base_params = {"resolution": res_value}
+            if symbol:
+                candidate_params.append({**base_params, "symbol": symbol, "limit": limit_value})
+            if product_id:
+                candidate_params.append({**base_params, "product_id": product_id, "limit": limit_value})
+
+            seconds_per_step_options = {res_value}
+            if isinstance(res_value, int) and res_value > 0:
+                seconds_per_step_options.add(res_value * 60)
+
+            for seconds_per_step in seconds_per_step_options:
+                start_ts = end_ts - (limit_value * seconds_per_step)
+                if symbol:
+                    candidate_params.append(
+                        {**base_params, "symbol": symbol, "start": start_ts, "end": end_ts}
+                    )
+                    candidate_params.append(
+                        {
+                            **base_params,
+                            "symbol": symbol,
+                            "start": start_ts * 1000,
+                            "end": end_ts * 1000,
+                        }
+                    )
+                if product_id:
+                    candidate_params.append(
+                        {**base_params, "product_id": product_id, "start": start_ts, "end": end_ts}
+                    )
+                    candidate_params.append(
+                        {
+                            **base_params,
+                            "product_id": product_id,
+                            "start": start_ts * 1000,
+                            "end": end_ts * 1000,
+                        }
+                    )
+
+        last_response = None
+        for params in candidate_params:
+            response = requests.get(candles_url, params=params, timeout=10)
+            if response.ok:
+                payload = response.json()
+                result = payload.get("result", payload)
+                if isinstance(result, dict) and "candles" in result:
+                    return result["candles"]
+                return result
+            last_response = response
+
+        if last_response is not None:
+            last_response.raise_for_status()
+        raise RuntimeError("Delta candles request failed without a response")
 
     def resolve_product_id(self, symbol, product_id=None):
         if product_id:
@@ -102,10 +144,13 @@ class DeltaApi:
             return self.client.get_candles(symbol, resolution, limit)
         try:
             return self._fetch_candles(symbol, resolution, limit)
+        except requests.HTTPError as exc:  # pragma: no cover - network fallback
+            status = exc.response.status_code if exc.response is not None else "unknown"
+            body = exc.response.text[:300] if exc.response is not None else "no response"
+            raise RuntimeError(f"Delta candles request failed ({status}): {body}") from exc
         except Exception as exc:  # pragma: no cover - network fallback
             raise RuntimeError(
-                "Delta client missing get_candles() method. "
-                "Upgrade delta-rest-client or verify BASE_URL."
+                "Delta candles request failed. Verify BASE_URL, SYMBOL, and TIMEFRAME."
             ) from exc
 
     def get_position(self, product_id):
