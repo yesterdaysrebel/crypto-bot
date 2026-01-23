@@ -1,0 +1,30 @@
+name: deploy-ec2
+
+on:
+  push:
+    branches: ["main"]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Add SSH key
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.EC2_SSH_KEY }}
+
+      - name: Sync files
+        run: |
+          rsync -az --delete \
+            --exclude ".git*" \
+            --exclude "logs" \
+            --exclude ".env" \
+            ./ ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/opt/crypto-bot
+
+      - name: Install deps and restart service
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} \
+          "cd /opt/crypto-bot && ./scripts/ec2_setup.sh"
