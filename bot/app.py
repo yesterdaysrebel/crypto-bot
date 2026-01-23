@@ -61,12 +61,16 @@ class TradingBot:
     def _place_bracket(self, signal, size):
         entry_type = self.api.order_type_value(ENTRY_ORDER_TYPE)
         tif_value = self.api.tif_value(TIME_IN_FORCE)
+        trail_amount = abs(signal["entry"] - signal["stop"])
 
         self.logger.info(
-            "Placing entry order: side=%s size=%s entry=%s",
+            "Placing orders: side=%s size=%s entry=%s stop_ref=%s trail=%s target=%s",
             signal["side"],
             size,
             signal["entry"],
+            signal["stop"],
+            trail_amount,
+            signal["target"],
         )
 
         self.api.place_order(
@@ -81,7 +85,6 @@ class TradingBot:
         )
 
         stop_side = "sell" if signal["side"] == "buy" else "buy"
-        trail_amount = abs(signal["entry"] - signal["stop"])
         self.logger.info("Placing trailing stop loss with trail %s", trail_amount)
         self.api.place_stop_order(
             product_id=self.product_id,
@@ -158,6 +161,17 @@ class TradingBot:
         if size <= 0:
             self.logger.warning("Size computed as 0; skipping trade")
             return
+
+        trail_amount = abs(signal["entry"] - signal["stop"])
+        self.logger.info(
+            "Signal detected: side=%s entry=%s stop_ref=%s target=%s size=%s trail=%s",
+            signal["side"],
+            signal["entry"],
+            signal["stop"],
+            signal["target"],
+            size,
+            trail_amount,
+        )
 
         if DRY_RUN:
             self.logger.info("DRY_RUN trade: %s %s @ %s", signal["side"], size, signal["entry"])
