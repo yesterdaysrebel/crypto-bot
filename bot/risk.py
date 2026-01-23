@@ -5,6 +5,7 @@ from bot.config import (
     MAX_WEEKLY_LOSS,
     MAX_DRAWDOWN,
     MAX_TRADES_PER_DAY,
+    ENFORCE_TRADE_LIMITS,
 )
 
 
@@ -38,6 +39,9 @@ def position_size(
 
 
 def trading_halted(state, equity):
+    if not ENFORCE_TRADE_LIMITS:
+        return False, ""
+
     if state.daily_loss_pct(equity) >= MAX_DAILY_LOSS:
         return True, "max daily loss reached"
     if state.weekly_loss_pct(equity) >= MAX_WEEKLY_LOSS:

@@ -55,3 +55,4 @@ STATE_FILE = os.getenv("STATE_FILE", "bot_state.json")
 DRY_RUN = os.getenv("DRY_RUN", "true").lower() == "true"
 JOURNAL_PATH = os.getenv("JOURNAL_PATH", "journals/trade_journal.csv")
 LOG_TRADES = os.getenv("LOG_TRADES", "true").lower() == "true"
+ENFORCE_TRADE_LIMITS = os.getenv("ENFORCE_TRADE_LIMITS", "true").lower() == "true"
