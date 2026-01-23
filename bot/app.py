@@ -81,13 +81,15 @@ class TradingBot:
         )
 
         stop_side = "sell" if signal["side"] == "buy" else "buy"
-        self.logger.info("Placing stop loss at %s", signal["stop"])
+        trail_amount = abs(signal["entry"] - signal["stop"])
+        self.logger.info("Placing trailing stop loss with trail %s", trail_amount)
         self.api.place_stop_order(
             product_id=self.product_id,
             side=stop_side,
             size=size,
-            stop_price=signal["stop"],
             order_type="market",
+            is_trailing=True,
+            trail_amount=trail_amount,
         )
 
         if TAKE_PROFIT_ENABLED:
