@@ -1,4 +1,10 @@
 .env
+.env.*
+.venv/
+__pycache__/
+bot_state.json
+journals/
+.env
 .venv/
 __pycache__/
 *.pyc
