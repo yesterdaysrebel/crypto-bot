@@ -28,6 +28,21 @@ class DeltaApi:
         payload = response.json()
         return payload.get("result", payload)
 
+    def _fetch_candles(self, symbol, resolution, limit):
+        base_url = BASE_URL.rstrip("/") + "/"
+        candles_url = urljoin(base_url, "v2/history/candles")
+        response = requests.get(
+            candles_url,
+            params={"symbol": symbol, "resolution": resolution, "limit": limit},
+            timeout=10,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        result = payload.get("result", payload)
+        if isinstance(result, dict) and "candles" in result:
+            return result["candles"]
+        return result
+
     def resolve_product_id(self, symbol, product_id=None):
         if product_id:
             return int(product_id)
@@ -55,7 +70,13 @@ class DeltaApi:
     def get_candles(self, symbol, resolution, limit):
         if hasattr(self.client, "get_candles"):
             return self.client.get_candles(symbol, resolution, limit)
-        raise RuntimeError("Delta client missing get_candles() method")
+        try:
+            return self._fetch_candles(symbol, resolution, limit)
+        except Exception as exc:  # pragma: no cover - network fallback
+            raise RuntimeError(
+                "Delta client missing get_candles() method. "
+                "Upgrade delta-rest-client or verify BASE_URL."
+            ) from exc
 
     def get_position(self, product_id):
         return self.client.get_position(product_id)
