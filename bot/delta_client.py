@@ -1,3 +1,6 @@
+from urllib.parse import urljoin
+
+import requests
 from delta_rest_client import DeltaRestClient
 
 from bot.config import API_KEY, API_SECRET, BASE_URL
@@ -17,6 +20,14 @@ class DeltaApi:
             api_secret=API_SECRET,
         )
 
+    def _fetch_products(self):
+        base_url = BASE_URL.rstrip("/") + "/"
+        products_url = urljoin(base_url, "v2/products")
+        response = requests.get(products_url, timeout=10)
+        response.raise_for_status()
+        payload = response.json()
+        return payload.get("result", payload)
+
     def resolve_product_id(self, symbol, product_id=None):
         if product_id:
             return int(product_id)
@@ -25,7 +36,13 @@ class DeltaApi:
             response = self.client.get_products()
             products = response.get("result", response)
         else:
-            raise RuntimeError("Delta client missing get_products() method")
+            try:
+                products = self._fetch_products()
+            except Exception as exc:  # pragma: no cover - network fallback
+                raise RuntimeError(
+                    "Delta client missing get_products() method. "
+                    "Set PRODUCT_ID in your .env or upgrade delta-rest-client."
+                ) from exc
 
         symbol_upper = symbol.upper()
         for product in products:
