@@ -193,7 +193,11 @@ class TradingBot:
                 self.loop_count += 1
                 now = time.time()
                 if now - self.last_heartbeat >= 60:
-                    self.logger.info("Bot heartbeat: alive, loop=%d", self.loop_count)
+                    try:
+                        current_price = self.api.get_price(SYMBOL, PRICE_SOURCE, product_id=self.product_id)
+                        self.logger.info("Bot heartbeat: alive, loop=%d, price=%s", self.loop_count, current_price)
+                    except Exception:
+                        self.logger.info("Bot heartbeat: alive, loop=%d", self.loop_count)
                     self.last_heartbeat = now
                 self.run_once()
             except Exception as exc:
