@@ -41,6 +41,8 @@ class TradingBot:
         self.state = BotState()
         self.journal = TradeJournal()
         self.product_id = self.api.resolve_product_id(SYMBOL, PRODUCT_ID)
+        self.loop_count = 0
+        self.last_heartbeat = 0
         if DRY_RUN:
             self.logger.warning("DRY_RUN is enabled: orders will not be placed")
 
@@ -188,6 +190,11 @@ class TradingBot:
         self.logger.info("Starting bot for %s (product_id=%s)", SYMBOL, self.product_id)
         while True:
             try:
+                self.loop_count += 1
+                now = time.time()
+                if now - self.last_heartbeat >= 3600:
+                    self.logger.info("Bot heartbeat: alive, loop=%d", self.loop_count)
+                    self.last_heartbeat = now
                 self.run_once()
             except Exception as exc:
                 self.logger.exception("Bot error: %s", exc)
