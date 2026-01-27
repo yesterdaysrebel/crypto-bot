@@ -192,7 +192,7 @@ class TradingBot:
             try:
                 self.loop_count += 1
                 now = time.time()
-                if now - self.last_heartbeat >= 3600:
+                if now - self.last_heartbeat >= 60:
                     self.logger.info("Bot heartbeat: alive, loop=%d", self.loop_count)
                     self.last_heartbeat = now
                 self.run_once()
