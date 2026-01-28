@@ -33,6 +33,18 @@ VWAP_LOOKBACK = _get_int("VWAP_LOOKBACK", 50)
 STOP_PCT = _get_float("STOP_PCT", 0.004)
 TAKE_PROFIT_R = _get_float("TAKE_PROFIT_R", 1.5)
 
+# Advanced strategy settings
+USE_ATR_STOPS = os.getenv("USE_ATR_STOPS", "false").lower() == "true"
+ATR_PERIOD = _get_int("ATR_PERIOD", 14)
+ATR_MULTIPLIER = _get_float("ATR_MULTIPLIER", 2.0)
+RSI_PERIOD = _get_int("RSI_PERIOD", 14)
+RSI_OVERBOUGHT = _get_float("RSI_OVERBOUGHT", 70.0)
+RSI_OVERSOLD = _get_float("RSI_OVERSOLD", 30.0)
+BB_PERIOD = _get_int("BB_PERIOD", 20)
+BB_STD_DEV = _get_float("BB_STD_DEV", 2.0)
+VOLUME_SURGE_MULTIPLIER = _get_float("VOLUME_SURGE_MULTIPLIER", 1.5)
+USE_BREAKOUT_STRATEGY = os.getenv("USE_BREAKOUT_STRATEGY", "false").lower() == "true"
+
 ENTRY_ORDER_TYPE = os.getenv("ENTRY_ORDER_TYPE", "market").lower()
 TIME_IN_FORCE = os.getenv("TIME_IN_FORCE", "gtc").lower()
 POST_ONLY = os.getenv("POST_ONLY", "false").lower() == "true"
