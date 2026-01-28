@@ -50,6 +50,9 @@ TIME_IN_FORCE = os.getenv("TIME_IN_FORCE", "gtc").lower()
 POST_ONLY = os.getenv("POST_ONLY", "false").lower() == "true"
 REDUCE_ONLY = os.getenv("REDUCE_ONLY", "true").lower() == "true"
 TAKE_PROFIT_ENABLED = os.getenv("TAKE_PROFIT_ENABLED", "true").lower() == "true"
+PARTIAL_PROFIT_ENABLED = os.getenv("PARTIAL_PROFIT_ENABLED", "false").lower() == "true"
+PARTIAL_PROFIT_PCT = _get_float("PARTIAL_PROFIT_PCT", 0.5)
+PARTIAL_PROFIT_R = _get_float("PARTIAL_PROFIT_R", 2.0)
 
 MIN_QTY = _get_float("MIN_QTY", 0.1)
 MAX_QTY = _get_float("MAX_QTY", 0.0)

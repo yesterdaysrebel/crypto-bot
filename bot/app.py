@@ -19,6 +19,9 @@ from bot.config import (
     RISK_PER_TRADE,
     SYMBOL,
     TAKE_PROFIT_ENABLED,
+    PARTIAL_PROFIT_ENABLED,
+    PARTIAL_PROFIT_PCT,
+    PARTIAL_PROFIT_R,
     TIMEFRAME,
     TIME_IN_FORCE,
     POST_ONLY,
@@ -65,6 +68,23 @@ class TradingBot:
         entry_type = self.api.order_type_value(ENTRY_ORDER_TYPE)
         tif_value = self.api.tif_value(TIME_IN_FORCE)
         trail_amount = abs(signal["entry"] - signal["stop"])
+        stop_side = "sell" if signal["side"] == "buy" else "buy"
+
+        # Calculate partial profit sizes
+        if PARTIAL_PROFIT_ENABLED:
+            partial_size = int(size * PARTIAL_PROFIT_PCT)
+            trailing_size = size - partial_size
+            
+            # Ensure sizes respect minimum quantities
+            if partial_size < 1:
+                partial_size = 0
+                trailing_size = size
+            if trailing_size < 1:
+                trailing_size = 1
+                partial_size = size - 1
+        else:
+            partial_size = 0
+            trailing_size = size
 
         self.logger.info(
             "Placing orders: side=%s size=%s entry=%s stop_ref=%s trail=%s target=%s",
@@ -76,6 +96,7 @@ class TradingBot:
             signal["target"],
         )
 
+        # Place entry order
         self.api.place_order(
             product_id=self.product_id,
             side=signal["side"],
@@ -87,18 +108,45 @@ class TradingBot:
             reduce_only=False,
         )
 
-        stop_side = "sell" if signal["side"] == "buy" else "buy"
-        self.logger.info("Placing trailing stop loss with trail %s", trail_amount)
+        # Place trailing stop for full position initially (or remaining after partial)
+        stop_size = trailing_size if PARTIAL_PROFIT_ENABLED and partial_size > 0 else size
+        self.logger.info("Placing trailing stop loss with trail %s for size %s", trail_amount, stop_size)
         self.api.place_stop_order(
             product_id=self.product_id,
             side=stop_side,
-            size=size,
+            size=stop_size,
             order_type="market",
             is_trailing=True,
             trail_amount=trail_amount,
         )
 
-        if TAKE_PROFIT_ENABLED:
+        # Place partial profit target at 2:1 (or configured R:R)
+        if PARTIAL_PROFIT_ENABLED and partial_size > 0:
+            partial_target = signal["entry"] + (trail_amount * PARTIAL_PROFIT_R) if signal["side"] == "buy" else signal["entry"] - (trail_amount * PARTIAL_PROFIT_R)
+            self.logger.info(
+                "Placing PARTIAL take profit at %s for %s%% of position (size=%s)",
+                partial_target,
+                int(PARTIAL_PROFIT_PCT * 100),
+                partial_size,
+            )
+            self.api.place_order(
+                product_id=self.product_id,
+                side=stop_side,
+                size=partial_size,
+                order_type=self.api.order_type_value("limit"),
+                limit_price=partial_target,
+                time_in_force=tif_value,
+                post_only=POST_ONLY,
+                reduce_only=REDUCE_ONLY,
+            )
+            self.logger.info(
+                "Remaining %s%% (size=%s) will trail with stop loss",
+                int((1 - PARTIAL_PROFIT_PCT) * 100),
+                trailing_size,
+            )
+
+        # Place final take profit at original target (if enabled and not using partial)
+        if TAKE_PROFIT_ENABLED and not PARTIAL_PROFIT_ENABLED:
             self.logger.info("Placing take profit at %s", signal["target"])
             self.api.place_order(
                 product_id=self.product_id,
