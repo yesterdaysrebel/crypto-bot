@@ -87,30 +87,44 @@ def generate_signal_breakout(candles, price_override=None):
     # Calculate dynamic stop based on ATR
     stop_distance = atr_value * ATR_MULTIPLIER
     
-    # LONG CONDITIONS
-    # 1. Breakout above upper Bollinger Band OR strong uptrend
-    # 2. Fast EMA > Slow EMA (uptrend confirmation)
-    # 3. Price above VWAP (buyer control)
-    # 4. RSI not overbought (room to run)
-    # 5. Volume surge (strength confirmation)
+    # LONG CONDITIONS (relaxed for better opportunity capture)
+    # Core requirement: Strong trend OR clear breakout
+    # Plus momentum confirmation
     
-    breakout_long = price > bb["upper"] and (is_squeezed or volume_surge)
-    trend_long = ema_fast > ema_slow and price > vwap_value
-    momentum_long = RSI_OVERSOLD < rsi_value < RSI_OVERBOUGHT
+    # Option 1: Bollinger breakout with volume (squeeze not required)
+    bb_breakout = price > bb["upper"] and volume_surge
     
-    if breakout_long and trend_long and momentum_long:
+    # Option 2: Strong trend (both EMA and VWAP aligned)
+    strong_trend = ema_fast > ema_slow and price > vwap_value
+    
+    # Option 3: Moderate trend with volume (VWAP or EMA + volume)
+    moderate_trend = (ema_fast > ema_slow or price > vwap_value) and volume_surge
+    
+    # Momentum check (avoid extreme overbought only)
+    momentum_ok = rsi_value < RSI_OVERBOUGHT  # Allow oversold (can bounce hard)
+    
+    # Enter if ANY strong condition + momentum check
+    if (bb_breakout or strong_trend or moderate_trend) and momentum_ok:
         stop = price - stop_distance
         target = price + stop_distance * TAKE_PROFIT_R
         return {"side": "buy", "entry": price, "stop": stop, "target": target}
     
-    # SHORT CONDITIONS
-    # Same logic but inverted for shorts
+    # SHORT CONDITIONS (same relaxed logic inverted)
     
-    breakout_short = price < bb["lower"] and (is_squeezed or volume_surge)
-    trend_short = ema_fast < ema_slow and price < vwap_value
-    momentum_short = RSI_OVERSOLD < rsi_value < RSI_OVERBOUGHT
+    # Option 1: Bollinger breakdown with volume
+    bb_breakdown = price < bb["lower"] and volume_surge
     
-    if breakout_short and trend_short and momentum_short:
+    # Option 2: Strong downtrend (both EMA and VWAP aligned)
+    strong_downtrend = ema_fast < ema_slow and price < vwap_value
+    
+    # Option 3: Moderate downtrend with volume
+    moderate_downtrend = (ema_fast < ema_slow or price < vwap_value) and volume_surge
+    
+    # Momentum check (avoid extreme oversold only)
+    momentum_ok_short = rsi_value > RSI_OVERSOLD  # Allow overbought (can dump hard)
+    
+    # Enter if ANY strong condition + momentum check
+    if (bb_breakdown or strong_downtrend or moderate_downtrend) and momentum_ok_short:
         stop = price + stop_distance
         target = price - stop_distance * TAKE_PROFIT_R
         return {"side": "sell", "entry": price, "stop": stop, "target": target}
