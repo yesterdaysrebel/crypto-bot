@@ -24,6 +24,7 @@ def position_size(
     risk_per_trade,
     fixed_qty=0.0,
     max_notional=None,
+    max_qty=0.0,
 ):
     if fixed_qty and fixed_qty > 0:
         return int(floor(fixed_qty))
@@ -34,6 +35,8 @@ def position_size(
     size = risk_amount / stop_dist
     if max_notional and entry > 0:
         size = min(size, max_notional / entry)
+    if max_qty and max_qty > 0:
+        size = min(size, max_qty)
     size = max(size, min_qty)
     size = round_step(size, qty_step)
     return int(floor(size))

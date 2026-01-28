@@ -10,6 +10,7 @@ from bot.config import (
     LOG_LEVEL,
     LOG_TRADES,
     MIN_QTY,
+    MAX_QTY,
     MIN_SECONDS_BETWEEN_TRADES,
     POLL_SECONDS,
     PRODUCT_ID,
@@ -159,6 +160,7 @@ class TradingBot:
             risk_per_trade=RISK_PER_TRADE,
             fixed_qty=FIXED_QTY,
             max_notional=(DAILY_CAPITAL * LEVERAGE) if DAILY_CAPITAL and LEVERAGE else None,
+            max_qty=MAX_QTY,
         )
         if size <= 0:
             self.logger.warning("Size computed as 0; skipping trade")

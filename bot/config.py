@@ -52,6 +52,7 @@ REDUCE_ONLY = os.getenv("REDUCE_ONLY", "true").lower() == "true"
 TAKE_PROFIT_ENABLED = os.getenv("TAKE_PROFIT_ENABLED", "true").lower() == "true"
 
 MIN_QTY = _get_float("MIN_QTY", 0.1)
+MAX_QTY = _get_float("MAX_QTY", 0.0)
 QTY_STEP = _get_float("QTY_STEP", 0.1)
 FIXED_QTY = _get_float("FIXED_QTY", 0.0)
 PRICE_SOURCE = os.getenv("PRICE_SOURCE", "candle").lower()
