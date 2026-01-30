@@ -1,5 +1,21 @@
 import logging
 import os
+from datetime import datetime
+
+
+def get_local_timezone():
+    """Detect and return the device's local timezone"""
+    return datetime.now().astimezone().tzinfo
+
+
+class LocalTimezoneFormatter(logging.Formatter):
+    """Custom formatter that uses device's local timezone for log timestamps"""
+    def formatTime(self, record, datefmt=None):
+        local_tz = get_local_timezone()
+        ct = datetime.fromtimestamp(record.created, tz=local_tz)
+        if datefmt:
+            return ct.strftime(datefmt)
+        return ct.strftime(self.default_time_format)
 
 
 def setup_logging(level_name):
@@ -11,7 +27,7 @@ def setup_logging(level_name):
     logger.setLevel(log_level)
     logger.propagate = False
 
-    formatter = logging.Formatter(
+    formatter = LocalTimezoneFormatter(
         "%(asctime)s %(levelname)s %(name)s %(message)s"
     )
 

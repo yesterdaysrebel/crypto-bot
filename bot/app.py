@@ -64,6 +64,30 @@ class TradingBot:
         size = float(position.get("size", 0)) if isinstance(position, dict) else 0.0
         return abs(size) > 0
 
+    def _has_pending_orders(self):
+        """Check if there are any pending/open orders for this product"""
+        try:
+            # Common order states: "open", "pending", "filled", "cancelled", "rejected"
+            # We want to check for orders that are still active (not filled/cancelled/rejected)
+            response = self.api.get_orders(product_id=self.product_id, states="open,pending")
+            orders = response.get("result", response)
+            if isinstance(orders, list):
+                # Filter to only non-reduce-only orders (entry orders)
+                entry_orders = [
+                    order for order in orders
+                    if isinstance(order, dict) and not order.get("reduce_only", False)
+                ]
+                return len(entry_orders) > 0
+            elif isinstance(orders, dict) and orders:
+                # Single order or dict response
+                return not orders.get("reduce_only", False)
+        except Exception as exc:
+            # If we can't check orders, log warning but don't block trading
+            # (some API clients might not support this)
+            self.logger.debug("Could not check pending orders: %s", exc)
+            return False
+        return False
+
     def _place_bracket(self, signal, size):
         entry_type = self.api.order_type_value(ENTRY_ORDER_TYPE)
         tif_value = self.api.tif_value(TIME_IN_FORCE)
@@ -185,6 +209,11 @@ class TradingBot:
             return
 
         if self._has_position():
+            return
+
+        # Skip pending orders check in dry run mode (no real orders are placed)
+        if not DRY_RUN and self._has_pending_orders():
+            self.logger.debug("Pending orders exist, skipping new trade setup")
             return
 
         raw_candles = self.api.get_candles(SYMBOL, TIMEFRAME, CANDLE_LIMIT)
