@@ -1,8 +1,13 @@
 import csv
 import os
-from datetime import datetime, timezone
+from datetime import datetime
 
 from bot.config import JOURNAL_PATH, LOG_TRADES
+
+
+def get_local_timezone():
+    """Detect and return the device's local timezone"""
+    return datetime.now().astimezone().tzinfo
 
 
 class TradeJournal:
@@ -22,7 +27,7 @@ class TradeJournal:
             writer = csv.writer(handle)
             writer.writerow(
                 [
-                    "ts_utc",
+                    "ts_local",
                     "symbol",
                     "product_id",
                     "side",
@@ -38,7 +43,7 @@ class TradeJournal:
     def log(self, symbol, product_id, side, entry, stop, target, size, mode, note=""):
         if not LOG_TRADES:
             return
-        ts = datetime.now(timezone.utc).isoformat()
+        ts = datetime.now(get_local_timezone()).isoformat()
         with open(self.path, "a", newline="", encoding="utf-8") as handle:
             writer = csv.writer(handle)
             writer.writerow(

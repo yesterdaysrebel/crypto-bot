@@ -10,6 +10,7 @@ from bot.config import (
     LOG_LEVEL,
     LOG_TRADES,
     MIN_QTY,
+    MAX_QTY,
     MIN_SECONDS_BETWEEN_TRADES,
     POLL_SECONDS,
     PRODUCT_ID,
@@ -18,6 +19,9 @@ from bot.config import (
     RISK_PER_TRADE,
     SYMBOL,
     TAKE_PROFIT_ENABLED,
+    PARTIAL_PROFIT_ENABLED,
+    PARTIAL_PROFIT_PCT,
+    PARTIAL_PROFIT_R,
     TIMEFRAME,
     TIME_IN_FORCE,
     POST_ONLY,
@@ -42,6 +46,8 @@ class TradingBot:
         self.state = BotState()
         self.journal = TradeJournal()
         self.product_id = self.api.resolve_product_id(SYMBOL, PRODUCT_ID)
+        self.loop_count = 0
+        self.last_heartbeat = 0
         if DRY_RUN:
             self.logger.warning("DRY_RUN is enabled: orders will not be placed")
 
@@ -59,10 +65,51 @@ class TradingBot:
         size = float(position.get("size", 0)) if isinstance(position, dict) else 0.0
         return abs(size) > 0
 
+    def _has_pending_orders(self):
+        """Check if there are any pending/open orders for this product"""
+        try:
+            # Common order states: "open", "pending", "filled", "cancelled", "rejected"
+            # We want to check for orders that are still active (not filled/cancelled/rejected)
+            response = self.api.get_orders(product_id=self.product_id, states="open,pending")
+            orders = response.get("result", response)
+            if isinstance(orders, list):
+                # Filter to only non-reduce-only orders (entry orders)
+                entry_orders = [
+                    order for order in orders
+                    if isinstance(order, dict) and not order.get("reduce_only", False)
+                ]
+                return len(entry_orders) > 0
+            elif isinstance(orders, dict) and orders:
+                # Single order or dict response
+                return not orders.get("reduce_only", False)
+        except Exception as exc:
+            # If we can't check orders, log warning but don't block trading
+            # (some API clients might not support this)
+            self.logger.debug("Could not check pending orders: %s", exc)
+            return False
+        return False
+
     def _place_bracket(self, signal, size):
         entry_type = self.api.order_type_value(ENTRY_ORDER_TYPE)
         tif_value = self.api.tif_value(TIME_IN_FORCE)
         trail_amount = abs(signal["entry"] - signal["stop"])
+        stop_side = "sell" if signal["side"] == "buy" else "buy"
+
+        # Calculate partial profit sizes
+        if PARTIAL_PROFIT_ENABLED:
+            partial_size = int(size * PARTIAL_PROFIT_PCT)
+            trailing_size = size - partial_size
+            
+            # Ensure sizes respect minimum quantities
+            if partial_size < 1:
+                partial_size = 0
+                trailing_size = size
+            if trailing_size < 1:
+                trailing_size = 1
+                partial_size = size - 1
+        else:
+            partial_size = 0
+            trailing_size = size
 
         self.logger.info(
             "Placing orders: side=%s size=%s entry=%s stop_ref=%s trail=%s target=%s",
@@ -74,6 +121,7 @@ class TradingBot:
             signal["target"],
         )
 
+        # Place entry order
         self.api.place_order(
             product_id=self.product_id,
             side=signal["side"],
@@ -109,7 +157,33 @@ class TradingBot:
                 is_trailing=False,
             )
 
-        if TAKE_PROFIT_ENABLED:
+        # Place partial profit target at 2:1 (or configured R:R)
+        if PARTIAL_PROFIT_ENABLED and partial_size > 0:
+            partial_target = signal["entry"] + (trail_amount * PARTIAL_PROFIT_R) if signal["side"] == "buy" else signal["entry"] - (trail_amount * PARTIAL_PROFIT_R)
+            self.logger.info(
+                "Placing PARTIAL take profit at %s for %s%% of position (size=%s)",
+                partial_target,
+                int(PARTIAL_PROFIT_PCT * 100),
+                partial_size,
+            )
+            self.api.place_order(
+                product_id=self.product_id,
+                side=stop_side,
+                size=partial_size,
+                order_type=self.api.order_type_value("limit"),
+                limit_price=partial_target,
+                time_in_force=tif_value,
+                post_only=POST_ONLY,
+                reduce_only=REDUCE_ONLY,
+            )
+            self.logger.info(
+                "Remaining %s%% (size=%s) will trail with stop loss",
+                int((1 - PARTIAL_PROFIT_PCT) * 100),
+                trailing_size,
+            )
+
+        # Place final take profit at original target (if enabled and not using partial)
+        if TAKE_PROFIT_ENABLED and not PARTIAL_PROFIT_ENABLED:
             self.logger.info("Placing take profit at %s", signal["target"])
             self.api.place_order(
                 product_id=self.product_id,
@@ -159,6 +233,11 @@ class TradingBot:
             self.logger.debug("Position exists; waiting for exit before new entry")
             return
 
+        # Skip pending orders check in dry run mode (no real orders are placed)
+        if not DRY_RUN and self._has_pending_orders():
+            self.logger.debug("Pending orders exist, skipping new trade setup")
+            return
+
         raw_candles = self.api.get_candles(SYMBOL, TIMEFRAME, CANDLE_LIMIT)
         candles = normalize_candles(raw_candles)
         price_override = None
@@ -182,6 +261,7 @@ class TradingBot:
             risk_per_trade=RISK_PER_TRADE,
             fixed_qty=FIXED_QTY,
             max_notional=(DAILY_CAPITAL * LEVERAGE) if DAILY_CAPITAL and LEVERAGE else None,
+            max_qty=MAX_QTY,
         )
         if size <= 0:
             self.logger.warning("Size computed as 0; skipping trade")
@@ -213,6 +293,15 @@ class TradingBot:
         self.logger.info("Starting bot for %s (product_id=%s)", SYMBOL, self.product_id)
         while True:
             try:
+                self.loop_count += 1
+                now = time.time()
+                if now - self.last_heartbeat >= 60:
+                    try:
+                        current_price = self.api.get_price(SYMBOL, PRICE_SOURCE, product_id=self.product_id)
+                        self.logger.info("Bot heartbeat: alive, loop=%d, price=%s", self.loop_count, current_price)
+                    except Exception:
+                        self.logger.info("Bot heartbeat: alive, loop=%d", self.loop_count)
+                    self.last_heartbeat = now
                 self.run_once()
             except Exception as exc:
                 self.logger.exception("Bot error: %s", exc)

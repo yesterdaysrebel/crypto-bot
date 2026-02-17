@@ -261,6 +261,52 @@ class DeltaApi:
     def get_balances(self, asset_id):
         return self.client.get_balances(asset_id)
 
+    def get_orders(self, product_id=None, states=None):
+        """Get orders, optionally filtered by product_id and states"""
+        try:
+            if hasattr(self.client, "get_orders"):
+                # Try different method signatures
+                try:
+                    if product_id is not None and states is not None:
+                        return self.client.get_orders(product_id=product_id, states=states)
+                    elif product_id is not None:
+                        return self.client.get_orders(product_id=product_id)
+                    elif states is not None:
+                        return self.client.get_orders(states=states)
+                    else:
+                        return self.client.get_orders()
+                except TypeError:
+                    # Try without states parameter if it's not supported
+                    if product_id is not None:
+                        return self.client.get_orders(product_id=product_id)
+                    return self.client.get_orders()
+        except Exception:
+            pass
+        
+        # Fallback: try to fetch via API directly
+        try:
+            base_url = BASE_URL.rstrip("/") + "/"
+            orders_url = urljoin(base_url, "v2/orders")
+            params = {}
+            if product_id:
+                params["product_id"] = product_id
+            if states:
+                params["states"] = states if isinstance(states, str) else ",".join(states)
+            
+            # Use the client's session if available, otherwise create request
+            # The DeltaRestClient should handle auth internally
+            if hasattr(self.client, "session"):
+                response = self.client.session.get(orders_url, params=params, timeout=10)
+            else:
+                # Last resort: direct request (may not have auth)
+                response = requests.get(orders_url, params=params, timeout=10)
+            response.raise_for_status()
+            payload = response.json()
+            return payload.get("result", payload)
+        except Exception:
+            # If we can't get orders, return empty list
+            return {"result": []}
+
     def place_order(
         self,
         product_id,
