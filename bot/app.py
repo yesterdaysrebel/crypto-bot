@@ -24,6 +24,7 @@ from bot.config import (
     QTY_STEP,
     FIXED_QTY,
     PRICE_SOURCE,
+    TRAILING_STOP_ENABLED,
 )
 from bot.delta_client import DeltaApi
 from bot.journal import TradeJournal
@@ -85,15 +86,28 @@ class TradingBot:
         )
 
         stop_side = "sell" if signal["side"] == "buy" else "buy"
-        self.logger.info("Placing trailing stop loss with trail %s", trail_amount)
-        self.api.place_stop_order(
-            product_id=self.product_id,
-            side=stop_side,
-            size=size,
-            order_type="market",
-            is_trailing=True,
-            trail_amount=trail_amount,
-        )
+        
+        if TRAILING_STOP_ENABLED:
+            self.logger.info("Placing trailing stop loss with trail %s", trail_amount)
+            self.api.place_stop_order(
+                product_id=self.product_id,
+                side=stop_side,
+                size=size,
+                order_type="market",
+                is_trailing=True,
+                trail_amount=trail_amount,
+            )
+        else:
+            # Use fixed stop loss instead of trailing
+            self.logger.info("Placing fixed stop loss at %s", signal["stop"])
+            self.api.place_stop_order(
+                product_id=self.product_id,
+                side=stop_side,
+                size=size,
+                order_type="market",
+                stop_price=signal["stop"],
+                is_trailing=False,
+            )
 
         if TAKE_PROFIT_ENABLED:
             self.logger.info("Placing take profit at %s", signal["target"])
@@ -131,9 +145,18 @@ class TradingBot:
             return
 
         if not self.state.can_trade_cooldown(MIN_SECONDS_BETWEEN_TRADES):
+            last_ts = int(self.state.state.get("last_trade_ts") or 0)
+            elapsed = int(time.time()) - last_ts
+            remaining = MIN_SECONDS_BETWEEN_TRADES - elapsed
+            self.logger.debug(
+                "Cooldown active: %s seconds remaining (last trade: %s seconds ago)",
+                remaining,
+                elapsed,
+            )
             return
 
         if self._has_position():
+            self.logger.debug("Position exists; waiting for exit before new entry")
             return
 
         raw_candles = self.api.get_candles(SYMBOL, TIMEFRAME, CANDLE_LIMIT)
@@ -146,6 +169,8 @@ class TradingBot:
                 self.logger.warning("Price source %s unavailable, using candle close: %s", PRICE_SOURCE, exc)
         signal = generate_signal(candles, price_override=price_override)
         if not signal:
+            # Log at debug level to avoid spam, but can be enabled for troubleshooting
+            self.logger.debug("No trading signal generated (checking market conditions)")
             return
 
         size = position_size(

@@ -29,6 +29,7 @@ LEVERAGE = _get_float("LEVERAGE", 0.0)
 
 EMA_FAST = _get_int("EMA_FAST", 20)
 EMA_SLOW = _get_int("EMA_SLOW", 50)
+TREND_EMA_PERIOD = _get_int("TREND_EMA_PERIOD", 100)  # 0 = disable trend filter
 VWAP_LOOKBACK = _get_int("VWAP_LOOKBACK", 50)
 STOP_PCT = _get_float("STOP_PCT", 0.004)
 TAKE_PROFIT_R = _get_float("TAKE_PROFIT_R", 1.5)
@@ -38,6 +39,7 @@ TIME_IN_FORCE = os.getenv("TIME_IN_FORCE", "gtc").lower()
 POST_ONLY = os.getenv("POST_ONLY", "false").lower() == "true"
 REDUCE_ONLY = os.getenv("REDUCE_ONLY", "true").lower() == "true"
 TAKE_PROFIT_ENABLED = os.getenv("TAKE_PROFIT_ENABLED", "true").lower() == "true"
+TRAILING_STOP_ENABLED = os.getenv("TRAILING_STOP_ENABLED", "true").lower() == "true"
 
 MIN_QTY = _get_float("MIN_QTY", 0.1)
 QTY_STEP = _get_float("QTY_STEP", 0.1)
