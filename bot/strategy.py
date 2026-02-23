@@ -1,15 +1,24 @@
 from bot.config import (
+    ATR_MULTIPLIER,
+    ATR_PERIOD,
+    BB_PERIOD,
+    BB_STD_DEV,
     EMA_FAST,
     EMA_SLOW,
+    RSI_OVERBOUGHT,
+    RSI_OVERSOLD,
+    RSI_PERIOD,
     TREND_EMA_PERIOD,
     STOP_PCT,
     TAKE_PROFIT_R,
+    USE_BREAKOUT_STRATEGY,
     VWAP_LOOKBACK,
+    VOLUME_SURGE_MULTIPLIER,
 )
-from bot.indicators import ema, vwap
+from bot.indicators import atr, bollinger_bands, ema, rsi, vwap
 
 
-def generate_signal(candles, price_override=None):
+def generate_signal_basic(candles, price_override=None):
     min_len = max(EMA_SLOW, VWAP_LOOKBACK) + 2
     if TREND_EMA_PERIOD > 0:
         min_len = max(min_len, TREND_EMA_PERIOD + 2)
@@ -136,8 +145,7 @@ def generate_signal_breakout(candles, price_override=None):
 
 
 def generate_signal(candles, price_override=None):
-    """Main entry point - routes to appropriate strategy"""
+    """Main entry point - routes to appropriate strategy."""
     if USE_BREAKOUT_STRATEGY:
         return generate_signal_breakout(candles, price_override)
-    else:
-        return generate_signal_basic(candles, price_override)
+    return generate_signal_basic(candles, price_override)
