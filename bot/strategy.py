@@ -13,6 +13,7 @@ from bot.config import (
     TAKE_PROFIT_R,
     USE_BREAKOUT_STRATEGY,
     USE_REGIME_TREND,
+    USE_MTF_REGIME,
     VWAP_LOOKBACK,
     VOLUME_SURGE_MULTIPLIER,
     REGIME_FAST_EMA,
@@ -151,7 +152,7 @@ def generate_signal_breakout(candles, price_override=None):
     return None
 
 
-def generate_signal_regime_trend(candles, price_override=None):
+def generate_signal_regime_trend(candles, price_override=None, trend_candles=None):
     """Regime-aware trend strategy with volatility and pullback entries."""
     required_length = max(
         REGIME_SLOW_EMA,
@@ -170,8 +171,13 @@ def generate_signal_regime_trend(candles, price_override=None):
     last_close = closes[-1]
     prev_close = closes[-2]
 
-    fast = ema(closes, REGIME_FAST_EMA)
-    slow = ema(closes, REGIME_SLOW_EMA)
+    trend_source = trend_candles if trend_candles else candles
+    trend_closes = [c["close"] for c in trend_source]
+    if len(trend_closes) < (REGIME_SLOW_EMA + 2):
+        return None
+
+    fast = ema(trend_closes, REGIME_FAST_EMA)
+    slow = ema(trend_closes, REGIME_SLOW_EMA)
     pullback_ema = ema(closes, REGIME_PULLBACK_EMA)
     adx_value = adx(candles, REGIME_ADX_PERIOD)
     atr_value = atr(candles, ATR_PERIOD)
@@ -183,8 +189,9 @@ def generate_signal_regime_trend(candles, price_override=None):
     if adx_value < REGIME_ADX_MIN or atr_pct < REGIME_ATR_PCT_MIN:
         return None
 
-    trend_up = fast > slow and last_close > slow
-    trend_down = fast < slow and last_close < slow
+    trend_ref_close = trend_closes[-1]
+    trend_up = fast > slow and trend_ref_close > slow
+    trend_down = fast < slow and trend_ref_close < slow
 
     # Entry trigger: reclaim/lose pullback EMA with momentum.
     long_trigger = prev_close <= pullback_ema and last_close > pullback_ema and last_close > highs[-2]
@@ -205,8 +212,10 @@ def generate_signal_regime_trend(candles, price_override=None):
     return None
 
 
-def generate_signal(candles, price_override=None):
+def generate_signal(candles, price_override=None, trend_candles=None):
     """Main entry point - routes to appropriate strategy."""
+    if USE_MTF_REGIME:
+        return generate_signal_regime_trend(candles, price_override, trend_candles=trend_candles)
     if USE_REGIME_TREND:
         return generate_signal_regime_trend(candles, price_override)
     if USE_BREAKOUT_STRATEGY:

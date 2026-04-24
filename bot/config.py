@@ -46,6 +46,9 @@ BB_STD_DEV = _get_float("BB_STD_DEV", 2.0)
 VOLUME_SURGE_MULTIPLIER = _get_float("VOLUME_SURGE_MULTIPLIER", 1.5)
 USE_BREAKOUT_STRATEGY = os.getenv("USE_BREAKOUT_STRATEGY", "false").lower() == "true"
 USE_REGIME_TREND = os.getenv("USE_REGIME_TREND", "false").lower() == "true"
+USE_MTF_REGIME = os.getenv("USE_MTF_REGIME", "false").lower() == "true"
+TREND_TIMEFRAME = os.getenv("TREND_TIMEFRAME", "4h")
+ENTRY_TIMEFRAME = os.getenv("ENTRY_TIMEFRAME", "1h")
 REGIME_FAST_EMA = _get_int("REGIME_FAST_EMA", 50)
 REGIME_SLOW_EMA = _get_int("REGIME_SLOW_EMA", 200)
 REGIME_PULLBACK_EMA = _get_int("REGIME_PULLBACK_EMA", 20)

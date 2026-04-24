@@ -30,7 +30,10 @@ from bot.config import (
     PRICE_SOURCE,
     TRAILING_STOP_ENABLED,
     USE_BREAKOUT_STRATEGY,
+    USE_MTF_REGIME,
     USE_REGIME_TREND,
+    TREND_TIMEFRAME,
+    ENTRY_TIMEFRAME,
 )
 from bot.delta_client import DeltaApi
 from bot.journal import TradeJournal
@@ -55,6 +58,8 @@ class TradingBot:
             self.logger.warning("DRY_RUN is enabled: orders will not be placed")
 
     def _active_strategy_name(self):
+        if USE_MTF_REGIME:
+            return "mtf_regime"
         if USE_REGIME_TREND:
             return "regime_trend"
         if USE_BREAKOUT_STRATEGY:
@@ -248,15 +253,20 @@ class TradingBot:
             self.logger.debug("Pending orders exist, skipping new trade setup")
             return
 
-        raw_candles = self.api.get_candles(SYMBOL, TIMEFRAME, CANDLE_LIMIT)
+        signal_timeframe = ENTRY_TIMEFRAME if USE_MTF_REGIME else TIMEFRAME
+        raw_candles = self.api.get_candles(SYMBOL, signal_timeframe, CANDLE_LIMIT)
         candles = normalize_candles(raw_candles)
+        trend_candles = None
+        if USE_MTF_REGIME:
+            raw_trend_candles = self.api.get_candles(SYMBOL, TREND_TIMEFRAME, CANDLE_LIMIT)
+            trend_candles = normalize_candles(raw_trend_candles)
         price_override = None
         if PRICE_SOURCE and PRICE_SOURCE != "candle":
             try:
                 price_override = self.api.get_price(SYMBOL, PRICE_SOURCE, product_id=self.product_id)
             except Exception as exc:
                 self.logger.warning("Price source %s unavailable, using candle close: %s", PRICE_SOURCE, exc)
-        signal = generate_signal(candles, price_override=price_override)
+        signal = generate_signal(candles, price_override=price_override, trend_candles=trend_candles)
         if not signal:
             # Log at debug level to avoid spam, but can be enabled for troubleshooting
             self.logger.debug("No trading signal generated (checking market conditions)")
@@ -301,10 +311,12 @@ class TradingBot:
 
     def run(self):
         self.logger.info(
-            "Starting bot for %s (product_id=%s, strategy=%s, dry_run=%s)",
+            "Starting bot for %s (product_id=%s, strategy=%s, tf=%s, trend_tf=%s, dry_run=%s)",
             SYMBOL,
             self.product_id,
             self.strategy_name,
+            ENTRY_TIMEFRAME if USE_MTF_REGIME else TIMEFRAME,
+            TREND_TIMEFRAME if USE_MTF_REGIME else "n/a",
             DRY_RUN,
         )
         while True:
