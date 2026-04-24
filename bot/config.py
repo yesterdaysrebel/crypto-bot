@@ -45,6 +45,13 @@ BB_PERIOD = _get_int("BB_PERIOD", 20)
 BB_STD_DEV = _get_float("BB_STD_DEV", 2.0)
 VOLUME_SURGE_MULTIPLIER = _get_float("VOLUME_SURGE_MULTIPLIER", 1.5)
 USE_BREAKOUT_STRATEGY = os.getenv("USE_BREAKOUT_STRATEGY", "false").lower() == "true"
+USE_REGIME_TREND = os.getenv("USE_REGIME_TREND", "false").lower() == "true"
+REGIME_FAST_EMA = _get_int("REGIME_FAST_EMA", 50)
+REGIME_SLOW_EMA = _get_int("REGIME_SLOW_EMA", 200)
+REGIME_PULLBACK_EMA = _get_int("REGIME_PULLBACK_EMA", 20)
+REGIME_ADX_PERIOD = _get_int("REGIME_ADX_PERIOD", 14)
+REGIME_ADX_MIN = _get_float("REGIME_ADX_MIN", 20.0)
+REGIME_ATR_PCT_MIN = _get_float("REGIME_ATR_PCT_MIN", 0.2)
 
 ENTRY_ORDER_TYPE = os.getenv("ENTRY_ORDER_TYPE", "market").lower()
 TIME_IN_FORCE = os.getenv("TIME_IN_FORCE", "gtc").lower()

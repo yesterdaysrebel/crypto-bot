@@ -29,6 +29,8 @@ from bot.config import (
     FIXED_QTY,
     PRICE_SOURCE,
     TRAILING_STOP_ENABLED,
+    USE_BREAKOUT_STRATEGY,
+    USE_REGIME_TREND,
 )
 from bot.delta_client import DeltaApi
 from bot.journal import TradeJournal
@@ -48,8 +50,16 @@ class TradingBot:
         self.product_id = self.api.resolve_product_id(SYMBOL, PRODUCT_ID)
         self.loop_count = 0
         self.last_heartbeat = 0
+        self.strategy_name = self._active_strategy_name()
         if DRY_RUN:
             self.logger.warning("DRY_RUN is enabled: orders will not be placed")
+
+    def _active_strategy_name(self):
+        if USE_REGIME_TREND:
+            return "regime_trend"
+        if USE_BREAKOUT_STRATEGY:
+            return "breakout"
+        return "basic"
 
     def _get_equity(self):
         if QUOTE_ASSET_ID:
@@ -290,7 +300,13 @@ class TradingBot:
         self.state.record_trade()
 
     def run(self):
-        self.logger.info("Starting bot for %s (product_id=%s)", SYMBOL, self.product_id)
+        self.logger.info(
+            "Starting bot for %s (product_id=%s, strategy=%s, dry_run=%s)",
+            SYMBOL,
+            self.product_id,
+            self.strategy_name,
+            DRY_RUN,
+        )
         while True:
             try:
                 self.loop_count += 1

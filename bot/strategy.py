@@ -12,10 +12,17 @@ from bot.config import (
     STOP_PCT,
     TAKE_PROFIT_R,
     USE_BREAKOUT_STRATEGY,
+    USE_REGIME_TREND,
     VWAP_LOOKBACK,
     VOLUME_SURGE_MULTIPLIER,
+    REGIME_FAST_EMA,
+    REGIME_SLOW_EMA,
+    REGIME_PULLBACK_EMA,
+    REGIME_ADX_PERIOD,
+    REGIME_ADX_MIN,
+    REGIME_ATR_PCT_MIN,
 )
-from bot.indicators import atr, bollinger_bands, ema, rsi, vwap
+from bot.indicators import adx, atr, bollinger_bands, ema, rsi, vwap
 
 
 def generate_signal_basic(candles, price_override=None):
@@ -144,8 +151,64 @@ def generate_signal_breakout(candles, price_override=None):
     return None
 
 
+def generate_signal_regime_trend(candles, price_override=None):
+    """Regime-aware trend strategy with volatility and pullback entries."""
+    required_length = max(
+        REGIME_SLOW_EMA,
+        REGIME_PULLBACK_EMA,
+        REGIME_ADX_PERIOD * 2,
+        ATR_PERIOD,
+    ) + 2
+    if len(candles) < required_length:
+        return None
+
+    closes = [c["close"] for c in candles]
+    highs = [c["high"] for c in candles]
+    lows = [c["low"] for c in candles]
+
+    price = price_override if price_override is not None else closes[-1]
+    last_close = closes[-1]
+    prev_close = closes[-2]
+
+    fast = ema(closes, REGIME_FAST_EMA)
+    slow = ema(closes, REGIME_SLOW_EMA)
+    pullback_ema = ema(closes, REGIME_PULLBACK_EMA)
+    adx_value = adx(candles, REGIME_ADX_PERIOD)
+    atr_value = atr(candles, ATR_PERIOD)
+
+    if atr_value <= 0 or price <= 0:
+        return None
+
+    atr_pct = (atr_value / price) * 100.0
+    if adx_value < REGIME_ADX_MIN or atr_pct < REGIME_ATR_PCT_MIN:
+        return None
+
+    trend_up = fast > slow and last_close > slow
+    trend_down = fast < slow and last_close < slow
+
+    # Entry trigger: reclaim/lose pullback EMA with momentum.
+    long_trigger = prev_close <= pullback_ema and last_close > pullback_ema and last_close > highs[-2]
+    short_trigger = prev_close >= pullback_ema and last_close < pullback_ema and last_close < lows[-2]
+
+    stop_distance = atr_value * ATR_MULTIPLIER
+
+    if trend_up and long_trigger:
+        stop = price - stop_distance
+        target = price + (stop_distance * TAKE_PROFIT_R)
+        return {"side": "buy", "entry": price, "stop": stop, "target": target}
+
+    if trend_down and short_trigger:
+        stop = price + stop_distance
+        target = price - (stop_distance * TAKE_PROFIT_R)
+        return {"side": "sell", "entry": price, "stop": stop, "target": target}
+
+    return None
+
+
 def generate_signal(candles, price_override=None):
     """Main entry point - routes to appropriate strategy."""
+    if USE_REGIME_TREND:
+        return generate_signal_regime_trend(candles, price_override)
     if USE_BREAKOUT_STRATEGY:
         return generate_signal_breakout(candles, price_override)
     return generate_signal_basic(candles, price_override)
