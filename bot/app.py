@@ -45,7 +45,18 @@ from bot.logger import setup_logging
 from bot.outcomes import OutcomeJournal
 from bot.risk import position_size, trading_halted
 from bot.state import BotState
-from bot.strategy import evaluate_signal
+try:
+    from bot.strategy import evaluate_signal
+except ImportError:
+    from bot.strategy import generate_signal as _legacy_generate_signal
+
+    def evaluate_signal(candles, price_override=None, trend_candles=None):
+        signal = _legacy_generate_signal(
+            candles,
+            price_override=price_override,
+            trend_candles=trend_candles,
+        )
+        return signal, "legacy_signal_router" if signal else "legacy_no_signal"
 from bot.utils import normalize_candles
 
 
