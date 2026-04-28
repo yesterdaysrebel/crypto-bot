@@ -47,6 +47,7 @@ VOLUME_SURGE_MULTIPLIER = _get_float("VOLUME_SURGE_MULTIPLIER", 1.5)
 USE_BREAKOUT_STRATEGY = os.getenv("USE_BREAKOUT_STRATEGY", "false").lower() == "true"
 USE_REGIME_TREND = os.getenv("USE_REGIME_TREND", "false").lower() == "true"
 USE_MTF_REGIME = os.getenv("USE_MTF_REGIME", "false").lower() == "true"
+USE_HYBRID_STRATEGY = os.getenv("USE_HYBRID_STRATEGY", "false").lower() == "true"
 TREND_TIMEFRAME = os.getenv("TREND_TIMEFRAME", "4h")
 ENTRY_TIMEFRAME = os.getenv("ENTRY_TIMEFRAME", "1h")
 REGIME_FAST_EMA = _get_int("REGIME_FAST_EMA", 50)
@@ -55,6 +56,10 @@ REGIME_PULLBACK_EMA = _get_int("REGIME_PULLBACK_EMA", 20)
 REGIME_ADX_PERIOD = _get_int("REGIME_ADX_PERIOD", 14)
 REGIME_ADX_MIN = _get_float("REGIME_ADX_MIN", 20.0)
 REGIME_ATR_PCT_MIN = _get_float("REGIME_ATR_PCT_MIN", 0.2)
+HYBRID_TREND_ADX_MIN = _get_float("HYBRID_TREND_ADX_MIN", 22.0)
+HYBRID_RANGE_ADX_MAX = _get_float("HYBRID_RANGE_ADX_MAX", 16.0)
+HYBRID_RANGE_RR = _get_float("HYBRID_RANGE_RR", 1.2)
+HYBRID_RANGE_STOP_ATR_MULTIPLIER = _get_float("HYBRID_RANGE_STOP_ATR_MULTIPLIER", 1.2)
 
 ENTRY_ORDER_TYPE = os.getenv("ENTRY_ORDER_TYPE", "market").lower()
 TIME_IN_FORCE = os.getenv("TIME_IN_FORCE", "gtc").lower()
@@ -82,5 +87,7 @@ LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 STATE_FILE = os.getenv("STATE_FILE", "bot_state.json")
 DRY_RUN = os.getenv("DRY_RUN", "true").lower() == "true"
 JOURNAL_PATH = os.getenv("JOURNAL_PATH", "journals/trade_journal.csv")
+ANALYTICS_PATH = os.getenv("ANALYTICS_PATH", "analytics/decision_log.csv")
+OUTCOMES_PATH = os.getenv("OUTCOMES_PATH", "journals/trade_outcomes.csv")
 LOG_TRADES = os.getenv("LOG_TRADES", "true").lower() == "true"
 ENFORCE_TRADE_LIMITS = os.getenv("ENFORCE_TRADE_LIMITS", "true").lower() == "true"
