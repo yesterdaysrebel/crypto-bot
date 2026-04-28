@@ -27,7 +27,8 @@ def position_size(
     max_qty=0.0,
 ):
     if fixed_qty and fixed_qty > 0:
-        return int(floor(fixed_qty))
+        size = round_step(float(fixed_qty), qty_step)
+        return size if size >= min_qty else 0.0
     stop_dist = abs(entry - stop)
     if stop_dist <= 0:
         return 0.0
@@ -39,7 +40,9 @@ def position_size(
         size = min(size, max_qty)
     size = max(size, min_qty)
     size = round_step(size, qty_step)
-    return int(floor(size))
+    if size < min_qty:
+        return 0.0
+    return float(size)
 
 
 def trading_halted(state, equity):
