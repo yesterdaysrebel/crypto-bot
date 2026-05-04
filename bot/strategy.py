@@ -212,12 +212,45 @@ def generate_signal_regime_trend(candles, price_override=None, trend_candles=Non
     return None
 
 
+def _evaluate_basic(candles, price_override=None):
+    signal = generate_signal_basic(candles, price_override=price_override)
+    return signal, "signal_basic" if signal else "no_basic_setup"
+
+
+def _evaluate_breakout(candles, price_override=None):
+    signal = generate_signal_breakout(candles, price_override=price_override)
+    return signal, "signal_breakout" if signal else "no_breakout_setup"
+
+
+def _evaluate_regime(candles, price_override=None, trend_candles=None):
+    signal = generate_signal_regime_trend(
+        candles,
+        price_override=price_override,
+        trend_candles=trend_candles,
+    )
+    return signal, "signal_regime" if signal else "no_regime_setup"
+
+
+def evaluate_signal(candles, price_override=None, trend_candles=None):
+    """Return (signal, reason) for analytics-friendly decision tracing."""
+    if USE_MTF_REGIME:
+        return _evaluate_regime(
+            candles,
+            price_override=price_override,
+            trend_candles=trend_candles,
+        )
+    if USE_REGIME_TREND:
+        return _evaluate_regime(candles, price_override=price_override)
+    if USE_BREAKOUT_STRATEGY:
+        return _evaluate_breakout(candles, price_override=price_override)
+    return _evaluate_basic(candles, price_override=price_override)
+
+
 def generate_signal(candles, price_override=None, trend_candles=None):
     """Main entry point - routes to appropriate strategy."""
-    if USE_MTF_REGIME:
-        return generate_signal_regime_trend(candles, price_override, trend_candles=trend_candles)
-    if USE_REGIME_TREND:
-        return generate_signal_regime_trend(candles, price_override)
-    if USE_BREAKOUT_STRATEGY:
-        return generate_signal_breakout(candles, price_override)
-    return generate_signal_basic(candles, price_override)
+    signal, _ = evaluate_signal(
+        candles,
+        price_override=price_override,
+        trend_candles=trend_candles,
+    )
+    return signal
