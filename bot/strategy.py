@@ -152,16 +152,16 @@ def generate_signal_breakout(candles, price_override=None):
     return None
 
 
-def generate_signal_regime_trend(candles, price_override=None, trend_candles=None):
-    """Regime-aware trend strategy with volatility and pullback entries."""
-    required_length = max(
-        REGIME_SLOW_EMA,
+def _regime_signal_with_reason(candles, price_override=None, trend_candles=None):
+    """Regime-aware trend strategy with explicit rejection reasons."""
+    required_entry_length = max(
         REGIME_PULLBACK_EMA,
         REGIME_ADX_PERIOD * 2,
         ATR_PERIOD,
-    ) + 2
-    if len(candles) < required_length:
-        return None
+        2,  # Need at least two bars for crossover/trigger checks.
+    )
+    if len(candles) < required_entry_length:
+        return None, "no_regime_history"
 
     closes = [c["close"] for c in candles]
     highs = [c["high"] for c in candles]
@@ -173,8 +173,8 @@ def generate_signal_regime_trend(candles, price_override=None, trend_candles=Non
 
     trend_source = trend_candles if trend_candles else candles
     trend_closes = [c["close"] for c in trend_source]
-    if len(trend_closes) < (REGIME_SLOW_EMA + 2):
-        return None
+    if len(trend_closes) < REGIME_SLOW_EMA:
+        return None, "no_trend_history"
 
     fast = ema(trend_closes, REGIME_FAST_EMA)
     slow = ema(trend_closes, REGIME_SLOW_EMA)
@@ -183,11 +183,13 @@ def generate_signal_regime_trend(candles, price_override=None, trend_candles=Non
     atr_value = atr(candles, ATR_PERIOD)
 
     if atr_value <= 0 or price <= 0:
-        return None
+        return None, "invalid_atr_or_price"
 
     atr_pct = (atr_value / price) * 100.0
-    if adx_value < REGIME_ADX_MIN or atr_pct < REGIME_ATR_PCT_MIN:
-        return None
+    if adx_value < REGIME_ADX_MIN:
+        return None, "adx_below_min"
+    if atr_pct < REGIME_ATR_PCT_MIN:
+        return None, "atr_pct_below_min"
 
     trend_ref_close = trend_closes[-1]
     trend_up = fast > slow and trend_ref_close > slow
@@ -202,14 +204,26 @@ def generate_signal_regime_trend(candles, price_override=None, trend_candles=Non
     if trend_up and long_trigger:
         stop = price - stop_distance
         target = price + (stop_distance * TAKE_PROFIT_R)
-        return {"side": "buy", "entry": price, "stop": stop, "target": target}
+        return {"side": "buy", "entry": price, "stop": stop, "target": target}, "signal_regime"
 
     if trend_down and short_trigger:
         stop = price + stop_distance
         target = price - (stop_distance * TAKE_PROFIT_R)
-        return {"side": "sell", "entry": price, "stop": stop, "target": target}
+        return {"side": "sell", "entry": price, "stop": stop, "target": target}, "signal_regime"
 
-    return None
+    if trend_up or trend_down:
+        return None, "pullback_trigger_not_met"
+    return None, "trend_bias_not_set"
+
+
+def generate_signal_regime_trend(candles, price_override=None, trend_candles=None):
+    """Regime-aware trend strategy with volatility and pullback entries."""
+    signal, _ = _regime_signal_with_reason(
+        candles,
+        price_override=price_override,
+        trend_candles=trend_candles,
+    )
+    return signal
 
 
 def _evaluate_basic(candles, price_override=None):
@@ -223,12 +237,12 @@ def _evaluate_breakout(candles, price_override=None):
 
 
 def _evaluate_regime(candles, price_override=None, trend_candles=None):
-    signal = generate_signal_regime_trend(
+    signal, reason = _regime_signal_with_reason(
         candles,
         price_override=price_override,
         trend_candles=trend_candles,
     )
-    return signal, "signal_regime" if signal else "no_regime_setup"
+    return signal, reason
 
 
 def evaluate_signal(candles, price_override=None, trend_candles=None):

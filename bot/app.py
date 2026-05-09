@@ -11,6 +11,7 @@ from bot.config import (
     LOG_TRADES,
     MIN_QTY,
     MAX_QTY,
+    MAX_NOTIONAL_USD,
     MIN_SECONDS_BETWEEN_TRADES,
     POLL_SECONDS,
     PRODUCT_ID,
@@ -57,7 +58,7 @@ except ImportError:
             trend_candles=trend_candles,
         )
         return signal, "legacy_signal_router" if signal else "legacy_no_signal"
-from bot.utils import normalize_candles
+from bot.utils import drop_in_progress_bar, normalize_candles
 
 
 class TradingBot:
@@ -616,11 +617,13 @@ class TradingBot:
         self.state.clear_live_trade_plan()
 
         raw_candles = self.api.get_candles(SYMBOL, signal_timeframe, CANDLE_LIMIT)
-        candles = normalize_candles(raw_candles)
+        candles = drop_in_progress_bar(normalize_candles(raw_candles), signal_timeframe)
         trend_candles = None
         if USE_MTF_REGIME:
             raw_trend_candles = self.api.get_candles(SYMBOL, TREND_TIMEFRAME, CANDLE_LIMIT)
-            trend_candles = normalize_candles(raw_trend_candles)
+            trend_candles = drop_in_progress_bar(
+                normalize_candles(raw_trend_candles), TREND_TIMEFRAME
+            )
         price_override = None
         if PRICE_SOURCE and PRICE_SOURCE != "candle":
             try:
@@ -643,6 +646,12 @@ class TradingBot:
             )
             return
 
+        if MAX_NOTIONAL_USD and MAX_NOTIONAL_USD > 0:
+            max_notional = MAX_NOTIONAL_USD
+        elif DAILY_CAPITAL and LEVERAGE:
+            max_notional = DAILY_CAPITAL * LEVERAGE
+        else:
+            max_notional = None
         size = position_size(
             equity=equity,
             entry=signal["entry"],
@@ -651,7 +660,7 @@ class TradingBot:
             qty_step=QTY_STEP,
             risk_per_trade=RISK_PER_TRADE,
             fixed_qty=FIXED_QTY,
-            max_notional=(DAILY_CAPITAL * LEVERAGE) if DAILY_CAPITAL and LEVERAGE else None,
+            max_notional=max_notional,
             max_qty=MAX_QTY,
         )
         if size <= 0:
@@ -674,6 +683,17 @@ class TradingBot:
             return
 
         trail_amount = abs(signal["entry"] - signal["stop"])
+        realized_risk_pct = (trail_amount * size / equity) if equity > 0 else 0.0
+        if RISK_PER_TRADE > 0 and realized_risk_pct < RISK_PER_TRADE * 0.5:
+            self.logger.warning(
+                "Risk clipped low: realized=%.4f%% target=%.4f%% size=%s (capped by max_qty/max_notional)",
+                realized_risk_pct * 100, RISK_PER_TRADE * 100, size,
+            )
+        elif RISK_PER_TRADE > 0 and realized_risk_pct > RISK_PER_TRADE * 1.5:
+            self.logger.warning(
+                "Risk clipped high: realized=%.4f%% target=%.4f%% size=%s (bumped to min_qty)",
+                realized_risk_pct * 100, RISK_PER_TRADE * 100, size,
+            )
         self.logger.info(
             "Signal detected: side=%s entry=%s stop_ref=%s target=%s size=%s trail=%s reason=%s",
             signal["side"],

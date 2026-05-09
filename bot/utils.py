@@ -1,3 +1,42 @@
+import time
+
+
+def timeframe_seconds(timeframe):
+    if not isinstance(timeframe, str) or len(timeframe) < 2:
+        return 0
+    suffix = timeframe[-1].lower()
+    try:
+        amount = int(timeframe[:-1])
+    except (TypeError, ValueError):
+        return 0
+    if suffix == "m":
+        return amount * 60
+    if suffix == "h":
+        return amount * 3600
+    if suffix == "d":
+        return amount * 86400
+    return 0
+
+
+def drop_in_progress_bar(candles, timeframe, now=None):
+    if not candles:
+        return candles
+    secs = timeframe_seconds(timeframe)
+    if secs <= 0:
+        return candles
+    last_open = candles[-1].get("time")
+    if last_open is None:
+        return candles
+    try:
+        last_open = int(last_open)
+    except (TypeError, ValueError):
+        return candles
+    current = int(now if now is not None else time.time())
+    if current < last_open + secs:
+        return candles[:-1]
+    return candles
+
+
 def normalize_candles(raw):
     if raw is None:
         return []
