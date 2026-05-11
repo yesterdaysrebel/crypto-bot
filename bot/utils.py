@@ -50,9 +50,12 @@ def normalize_candles(raw):
     for item in data:
         if isinstance(item, dict):
             try:
+                time_value = item.get("time")
+                if time_value is None:
+                    time_value = item.get("timestamp")
                 candles.append(
                     {
-                        "time": item.get("time") or item.get("timestamp"),
+                        "time": time_value,
                         "open": float(item["open"]),
                         "high": float(item.get("high", item["open"])),
                         "low": float(item.get("low", item["open"])),
@@ -76,4 +79,18 @@ def normalize_candles(raw):
                 )
             except Exception:
                 continue
-    return candles
+
+    # Delta candles endpoint returns descending time order, but every recurrence-
+    # based indicator (EMA, ADX, ATR, RSI, BB) requires ascending time. Sort
+    # defensively here so the live bot, replay tools, and tests share one
+    # canonical orientation regardless of upstream API behavior. Bars with an
+    # unparseable timestamp are dropped: passing them through unsorted would
+    # silently corrupt every downstream indicator.
+    sortable = []
+    for candle in candles:
+        try:
+            sortable.append((int(candle["time"]), candle))
+        except (TypeError, ValueError):
+            continue
+    sortable.sort(key=lambda pair: pair[0])
+    return [candle for _, candle in sortable]
